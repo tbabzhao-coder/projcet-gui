@@ -1,0 +1,681 @@
+// ============================================
+// Project4 Type Definitions
+// ============================================
+
+// API Provider Configuration
+export type ApiProvider = 'anthropic' | 'openai';
+
+// AI Source type - which provider is being used
+export type AISourceType = 'oauth' | 'custom' | string;
+
+// Available Claude models
+export interface ModelOption {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export const AVAILABLE_MODELS: ModelOption[] = [];
+
+export const DEFAULT_MODEL = '';
+
+// Permission Level
+export type PermissionLevel = 'allow' | 'ask' | 'deny';
+
+// Theme Mode
+export type ThemeMode = 'light' | 'dark' | 'system';
+
+// Tool Call Status
+export type ToolStatus = 'pending' | 'running' | 'success' | 'error' | 'waiting_approval';
+
+// Message Role
+export type MessageRole = 'user' | 'assistant' | 'system';
+
+// ============================================
+// Configuration Types
+// ============================================
+
+export interface ApiConfig {
+  provider: ApiProvider;
+  apiKey: string;
+  apiUrl: string;
+  model: string;
+  availableModels?: string[];
+}
+
+export interface PermissionConfig {
+  fileAccess: PermissionLevel;
+  commandExecution: PermissionLevel;
+  networkAccess: PermissionLevel;
+  trustMode: boolean;
+}
+
+export interface AppearanceConfig {
+  theme: ThemeMode;
+}
+
+// System configuration for auto-launch behavior
+export interface SystemConfig {
+  autoLaunch: boolean;      // Launch on system startup
+}
+
+// Remote access configuration
+export interface RemoteAccessConfig {
+  enabled: boolean;
+  port: number;
+}
+
+// ============================================
+// AI Sources Configuration (Multi-platform login)
+// ============================================
+
+// OAuth provider user info
+export interface OAuthUserInfo {
+  name: string;
+  avatar?: string;
+  uid?: string;
+}
+
+// OAuth source configuration (generic for any OAuth provider)
+export interface OAuthSourceConfig {
+  loggedIn: boolean;
+  user?: OAuthUserInfo;
+  model: string;
+  availableModels: string[];
+  modelNames?: Record<string, string>;
+  // Provider-specific token data - managed by main process
+  accessToken?: string;
+  refreshToken?: string;
+  tokenExpires?: number;
+}
+
+// Custom API source configuration (same as existing ApiConfig)
+export interface CustomSourceConfig {
+  id?: string;
+  name?: string;
+  type?: 'custom';
+  provider: ApiProvider;
+  apiKey: string;
+  apiUrl: string;
+  model: string;
+  availableModels?: string[];
+}
+
+// AI Sources - manages multiple login sources
+export interface AISourcesConfig {
+  current: AISourceType;  // Which source is currently active
+  oauth?: OAuthSourceConfig;
+  custom?: CustomSourceConfig;
+  // Dynamic provider configs (keyed by provider type)
+  [key: string]: AISourceType | OAuthSourceConfig | CustomSourceConfig | undefined;
+}
+
+// ============================================
+// MCP Server Configuration Types
+// Format compatible with Cursor / Claude Desktop
+// ============================================
+
+// MCP stdio server (command-based, most common)
+export interface McpStdioServerConfig {
+  type?: 'stdio';  // Optional, defaults to stdio
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+  timeout?: number;  // milliseconds
+  disabled?: boolean;  // Project4 extension: temporarily disable this server
+}
+
+// MCP HTTP server (REST API)
+export interface McpHttpServerConfig {
+  type: 'http';
+  url: string;
+  headers?: Record<string, string>;
+  disabled?: boolean;  // Project4 extension: temporarily disable this server
+}
+
+// MCP SSE server (Server-Sent Events)
+export interface McpSseServerConfig {
+  type: 'sse';
+  url: string;
+  headers?: Record<string, string>;
+  disabled?: boolean;  // Project4 extension: temporarily disable this server
+}
+
+// Union type for all MCP server configs
+export type McpServerConfig = McpStdioServerConfig | McpHttpServerConfig | McpSseServerConfig;
+
+// MCP servers map (key is server name)
+export type McpServersConfig = Record<string, McpServerConfig>;
+
+// MCP server status (from SDK)
+export type McpServerStatusType = 'connected' | 'failed' | 'needs-auth' | 'pending';
+
+export interface McpServerStatus {
+  name: string;
+  status: McpServerStatusType;
+  serverInfo?: {
+    name: string;
+    version: string;
+  };
+  error?: string;
+}
+
+// ============================================
+// Skill Configuration Types
+// Compatible with Claude Code CLI skill format
+// ============================================
+
+export interface SkillConfig {
+  name: string;           // Skill name (derived from directory/file name)
+  path: string;           // Absolute path to skill directory or .skill.md file
+  type: 'directory' | 'file';  // Whether it's a directory with multiple files or single .skill.md
+  description?: string;   // Optional description (parsed from .skill.md)
+  disabled?: boolean;     // Project4 extension: temporarily disable
+  importedAt?: string;    // ISO timestamp of import
+  hasScripts?: boolean;   // Whether the skill directory contains script files
+}
+
+export type SkillsConfig = Record<string, SkillConfig>;  // Key is skill name
+
+export interface AppConfig {
+  api: ApiConfig;  // Legacy, kept for backward compatibility
+  aiSources?: AISourcesConfig;  // New multi-source configuration
+  permissions: PermissionConfig;
+  appearance: AppearanceConfig;
+  system: SystemConfig;
+  remoteAccess: RemoteAccessConfig;
+  mcpServers: McpServersConfig;  // MCP servers configuration
+  skills?: SkillsConfig;  // Skills configuration (compatible with Claude Code CLI format)
+  isFirstLaunch: boolean;
+}
+
+// ============================================
+// Space Types
+// ============================================
+
+export interface SpaceStats {
+  artifactCount: number;
+  conversationCount: number;
+}
+
+// Layout preferences for a space (persisted to meta.json)
+export interface SpaceLayoutPreferences {
+  artifactRailExpanded?: boolean;  // Whether rail stays expanded when canvas is open
+  chatWidth?: number;              // Custom chat panel width when canvas is open
+}
+
+// All space preferences (extensible for future features)
+export interface SpacePreferences {
+  layout?: SpaceLayoutPreferences;
+}
+
+export interface Space {
+  id: string;
+  name: string;
+  icon: string;
+  path: string;
+  isTemp: boolean;
+  createdAt: string;
+  updatedAt: string;
+  stats: SpaceStats;
+  preferences?: SpacePreferences;  // User preferences for this space
+}
+
+export interface CreateSpaceInput {
+  name: string;
+  icon: string;
+  customPath?: string;
+}
+
+// ============================================
+// Conversation Types
+// ============================================
+
+// Lightweight metadata for conversation list (no messages)
+// Used by listConversations for fast loading
+export interface ConversationMeta {
+  id: string;
+  spaceId: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+  preview?: string;  // Last message preview (truncated)
+}
+
+// Full conversation with messages
+// Loaded on-demand when selecting a conversation
+export interface Conversation extends ConversationMeta {
+  messages: Message[];
+  sessionId?: string;
+}
+
+// ============================================
+// Message Types
+// ============================================
+
+export interface ToolCall {
+  id: string;
+  name: string;
+  status: ToolStatus;
+  input: Record<string, unknown>;
+  output?: string;
+  error?: string;
+  progress?: number;
+  requiresApproval?: boolean;
+  description?: string;
+}
+
+// ============================================
+// Image Attachment Types (for multi-modal messages)
+// ============================================
+
+export type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+
+// Image attachment for messages
+export interface ImageAttachment {
+  id: string;
+  type: 'image';
+  mediaType: ImageMediaType;
+  data: string;  // Base64 encoded image data
+  name?: string;  // Optional filename
+  size?: number;  // File size in bytes
+}
+
+// Content block types for multi-modal messages (matches Claude API)
+export interface TextContentBlock {
+  type: 'text';
+  text: string;
+}
+
+export interface ImageContentBlock {
+  type: 'image';
+  source: {
+    type: 'base64';
+    media_type: ImageMediaType;
+    data: string;
+  };
+}
+
+export type MessageContentBlock = TextContentBlock | ImageContentBlock;
+
+export interface Message {
+  id: string;
+  role: MessageRole;
+  content: string;  // Text content (for backward compatibility)
+  timestamp: string;
+  toolCalls?: ToolCall[];
+  thoughts?: Thought[];  // Agent's reasoning process for this message
+  isStreaming?: boolean;
+  images?: ImageAttachment[];  // Attached images
+  tokenUsage?: TokenUsage;  // Token usage for this assistant message
+}
+
+// ============================================
+// Artifact Types
+// ============================================
+
+export type ArtifactType = 'file' | 'folder';
+
+export interface Artifact {
+  id: string;
+  spaceId: string;
+  conversationId: string;
+  name: string;
+  type: ArtifactType;
+  path: string;
+  extension: string;
+  icon: string;
+  createdAt: string;
+  preview?: string;
+  size?: number;
+}
+
+// Tree node structure for developer view
+export interface ArtifactTreeNode {
+  id: string;
+  name: string;
+  type: ArtifactType;
+  path: string;
+  extension: string;
+  icon: string;
+  size?: number;
+  children?: ArtifactTreeNode[];
+  depth: number;
+  childrenLoaded?: boolean;  // For lazy loading - indicates if children have been fetched
+}
+
+// Artifact change event from file watcher
+export interface ArtifactChangeEvent {
+  type: 'add' | 'change' | 'unlink' | 'addDir' | 'unlinkDir';
+  path: string;
+  relativePath: string;
+  spaceId: string;
+  item?: Artifact | ArtifactTreeNode;
+}
+
+// View mode for artifact display
+export type ArtifactViewMode = 'card' | 'tree';
+
+// ============================================
+// Thought Process Types (Agent's real-time reasoning)
+// ============================================
+
+export type ThoughtType = 'thinking' | 'text' | 'tool_use' | 'tool_result' | 'system' | 'result' | 'error';
+
+export interface Thought {
+  id: string;
+  type: ThoughtType;
+  content: string;
+  timestamp: string;
+  // For tool-related thoughts
+  toolName?: string;
+  toolInput?: Record<string, unknown>;
+  toolOutput?: string;
+  isError?: boolean;
+  // For result thoughts
+  duration?: number;
+  // For streaming state (real-time updates)
+  isStreaming?: boolean;  // True while content is being streamed
+  isReady?: boolean;      // True when tool params are complete (for tool_use)
+  // For merged tool result display (tool_use contains its result)
+  toolResult?: {
+    output: string;
+    isError: boolean;
+    timestamp: string;
+  };
+}
+
+// Legacy alias for backwards compatibility
+export interface ThinkingBlock {
+  id: string;
+  content: string;
+  timestamp: string;
+  isComplete: boolean;
+}
+
+// ============================================
+// Canvas Context Types (AI awareness of user's open tabs)
+// ============================================
+
+/**
+ * Canvas Context - Provides AI with awareness of user's currently open tabs
+ * Injected into messages to enable natural language understanding of user context
+ */
+export interface CanvasContext {
+  isOpen: boolean;
+  tabCount: number;
+  activeTab: {
+    type: string;  // 'browser' | 'code' | 'markdown' | 'image' | 'pdf' | 'text' | 'json' | 'csv'
+    title: string;
+    url?: string;   // For browser/pdf tabs
+    path?: string;  // For file tabs
+  } | null;
+  tabs: Array<{
+    type: string;
+    title: string;
+    url?: string;
+    path?: string;
+    isActive: boolean;
+  }>;
+}
+
+// ============================================
+// Agent Event Types
+// All events now include spaceId and conversationId for multi-session support
+// ============================================
+
+// Base event with session identifiers
+export interface AgentEventBase {
+  spaceId: string;
+  conversationId: string;
+}
+
+export interface AgentMessageEvent extends AgentEventBase {
+  type: 'message';
+  content: string;
+  isComplete: boolean;
+  timestamp?: number;
+}
+
+export interface AgentThinkingEvent extends AgentEventBase {
+  type: 'thinking';
+  thinking: ThinkingBlock;
+}
+
+export interface AgentToolCallEvent extends AgentEventBase {
+  type: 'tool_call';
+  toolCall: ToolCall;
+}
+
+export interface AgentToolResultEvent extends AgentEventBase {
+  type: 'tool_result';
+  toolId: string;
+  result: string;
+  isError: boolean;
+}
+
+export interface AgentErrorEvent extends AgentEventBase {
+  type: 'error';
+  error: string;
+}
+
+// Token usage statistics from SDK result message
+export interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  totalCostUsd: number;
+  contextWindow: number;
+}
+
+export interface AgentCompleteEvent extends AgentEventBase {
+  type: 'complete';
+  duration: number;
+  tokenUsage?: TokenUsage | null;
+}
+
+export interface AgentThoughtEvent extends AgentEventBase {
+  thought: Thought;
+}
+
+// Compact notification info (context compression)
+export interface CompactInfo {
+  trigger: 'manual' | 'auto';
+  preTokens: number;
+}
+
+export interface AgentCompactEvent extends AgentEventBase {
+  type: 'compact';
+  trigger: 'manual' | 'auto';
+  preTokens: number;
+}
+
+export type AgentEvent =
+  | AgentMessageEvent
+  | AgentToolCallEvent
+  | AgentToolResultEvent
+  | AgentErrorEvent
+  | AgentCompleteEvent
+  | AgentCompactEvent;
+
+// ============================================
+// App State Types
+// ============================================
+
+export type AppView = 'splash' | 'gitBashSetup' | 'setup' | 'home' | 'space' | 'settings';
+
+export interface AppState {
+  view: AppView;
+  isLoading: boolean;
+  error: string | null;
+  config: AppConfig | null;
+}
+
+// ============================================
+// IPC Types
+// ============================================
+
+export interface IpcResponse<T = unknown> {
+  success: boolean;
+  data?: T;
+  error?: string;
+}
+
+// ============================================
+// Utility Types
+// ============================================
+
+export interface ValidationResult {
+  valid: boolean;
+  message?: string;
+  model?: string;
+}
+
+// Default values
+export const DEFAULT_CONFIG: AppConfig = {
+  api: {
+    provider: 'anthropic',
+    apiKey: '',
+    apiUrl: 'https://api.anthropic.com',
+    model: DEFAULT_MODEL
+  },
+  aiSources: {
+    current: 'custom',  // Default to custom API (no source configured yet)
+  },
+  permissions: {
+    fileAccess: 'allow',
+    commandExecution: 'ask',
+    networkAccess: 'allow',
+    trustMode: false
+  },
+  appearance: {
+    theme: 'system'
+  },
+  system: {
+    autoLaunch: false
+  },
+  remoteAccess: {
+    enabled: false,
+    port: 3456
+  },
+  mcpServers: {},  // Empty by default
+  isFirstLaunch: true
+};
+
+// Helper function to check if any AI source is configured
+export function hasAnyAISource(config: AppConfig): boolean {
+  const aiSources = config.aiSources;
+  if (!aiSources) {
+    return !!config.api?.apiKey;
+  }
+  const hasCustom = !!(aiSources.custom?.apiKey);
+
+  // Check any OAuth provider dynamically (any key with loggedIn: true except 'current' and 'custom')
+  const hasOAuth = Object.keys(aiSources).some(key => {
+    if (key === 'current' || key === 'custom') return false;
+    const source = aiSources[key as keyof typeof aiSources] as OAuthSourceConfig | undefined;
+    return source?.loggedIn === true;
+  });
+
+  return hasOAuth || hasCustom;
+}
+
+// Helper function to get current model display name
+export function getCurrentModelName(config: AppConfig): string {
+  const aiSources = config.aiSources;
+  if (!aiSources) {
+    const legacyModel = config.api?.model;
+    const model = AVAILABLE_MODELS.find(m => m.id === legacyModel);
+    return model?.name || legacyModel || 'No model';
+  }
+
+  // Check OAuth provider first
+  if (aiSources.current === 'oauth' && aiSources.oauth) {
+    return aiSources.oauth.model || 'Default';
+  }
+
+  // Check custom API
+  if (aiSources.current === 'custom' && aiSources.custom) {
+    const model = AVAILABLE_MODELS.find(m => m.id === aiSources.custom?.model);
+    return model?.name || aiSources.custom.model;
+  }
+
+  // Check dynamic provider (from config)
+  const dynamicConfig = aiSources[aiSources.current] as OAuthSourceConfig | undefined;
+  if (dynamicConfig && typeof dynamicConfig === 'object' && 'model' in dynamicConfig) {
+    const modelId = dynamicConfig.model;
+    // Use modelNames mapping if available, otherwise fall back to model ID
+    const displayName = dynamicConfig.modelNames?.[modelId] || modelId;
+    return displayName || 'Default';
+  }
+
+  return 'No model';
+}
+
+// Icon options for spaces (using icon IDs that map to Lucide icons)
+export const SPACE_ICONS = [
+  'folder', 'code', 'globe', 'chart', 'file-text', 'palette',
+  'gamepad', 'wrench', 'smartphone', 'lightbulb', 'rocket', 'star'
+] as const;
+
+export type SpaceIconId = typeof SPACE_ICONS[number];
+
+// Default space icon
+export const DEFAULT_SPACE_ICON: SpaceIconId = 'folder';
+
+// File type to icon ID mapping (maps to Lucide icon names)
+export const FILE_ICON_IDS: Record<string, string> = {
+  html: 'globe',
+  htm: 'globe',
+  css: 'palette',
+  scss: 'palette',
+  less: 'palette',
+  js: 'file-code',
+  jsx: 'file-code',
+  ts: 'file-code',
+  tsx: 'file-code',
+  json: 'file-json',
+  md: 'book',
+  markdown: 'book',
+  txt: 'file-text',
+  py: 'file-code',
+  rs: 'cpu',
+  go: 'file-code',
+  java: 'coffee',
+  cpp: 'cpu',
+  c: 'cpu',
+  h: 'cpu',
+  hpp: 'cpu',
+  rb: 'gem',
+  swift: 'apple',
+  sql: 'database',
+  sh: 'terminal',
+  bash: 'terminal',
+  zsh: 'terminal',
+  yaml: 'file-json',
+  yml: 'file-json',
+  xml: 'file-json',
+  svg: 'image',
+  png: 'image',
+  jpg: 'image',
+  jpeg: 'image',
+  gif: 'image',
+  webp: 'image',
+  ico: 'image',
+  pdf: 'book',
+  doc: 'file-text',
+  docx: 'file-text',
+  xls: 'database',
+  xlsx: 'database',
+  zip: 'package',
+  tar: 'package',
+  gz: 'package',
+  rar: 'package',
+  default: 'file-text'
+};
+
+export function getFileIconId(extension: string): string {
+  return FILE_ICON_IDS[extension.toLowerCase()] || FILE_ICON_IDS.default;
+}

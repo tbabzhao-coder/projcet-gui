@@ -1,0 +1,39 @@
+{
+  "$schema": "./product.schema.json",
+  "name": "Project4",
+  "version": "1.0.0",
+  "authProviders": [
+    {
+      "type": "github-copilot",
+      "displayName": {
+        "en": "GitHub Copilot",
+        "zh-CN": "GitHub Copilot"
+      },
+      "description": {
+        "en": "Use your Copilot subscription",
+        "zh-CN": "使用您的 Copilot 订阅"
+      },
+      "icon": "github",
+      "iconBgColor": "#24292e",
+      "recommended": false,
+      "builtin": true,
+      "enabled": true
+    },
+    {
+      "type": "custom",
+      "displayName": {
+        "en": "Custom API",
+        "zh-CN": "自定义 API"
+      },
+      "description": {
+        "en": "Claude / OpenAI compatible",
+        "zh-CN": "Claude / OpenAI"
+      },
+      "icon": "key",
+      "iconBgColor": "#da7756",
+      "recommended": false,
+      "builtin": true,
+      "enabled": true
+    }
+  ]
+}

@@ -1,0 +1,260 @@
+{
+  "name": "project4",
+  "version": "1.1.1",
+  "description": "AI-powered productivity assistant",
+  "type": "module",
+  "main": "./out/main/index.mjs",
+  "author": "Project4 Team",
+  "license": "MIT",
+  "scripts": {
+    "dev": "cross-env PROJECT4_DATA_DIR=~/.project4-dev electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "postinstall": "patch-package && electron-builder install-app-deps",
+    "prepare:all": "node scripts/prepare-all-python.mjs",
+    "prepare:all-platforms": "npm run prepare:mac-arm64 && npm run prepare:mac-x64 && npm run prepare:win-x64",
+    "check:python": "node scripts/check-python-ready.mjs",
+    "build:mac": "npm run build && electron-builder --mac",
+    "build:win": "npm run build && electron-builder --win",
+    "build:win-x64": "npm run build && electron-builder --win --x64",
+    "prepare:mac-arm64": "node scripts/prepare-cloudflared-mac-arm64.mjs && node scripts/prepare-python-mac-arm64.mjs",
+    "prepare:mac-x64": "node scripts/prepare-cloudflared-mac-x64.mjs && node scripts/prepare-python-mac-x64.mjs",
+    "prepare:win-x64": "node scripts/prepare-cloudflared-win-x64.mjs && node scripts/prepare-python-win-x64.mjs",
+    "prepare:linux-x64": "node scripts/prepare-cloudflared-linux-x64.mjs",
+    "build:mac-x64": "npm run build && electron-builder --mac --x64",
+    "build:linux": "npm run build && electron-builder --linux",
+    "icons": "bash scripts/generate-icons.sh",
+    "icons:ico": "node scripts/generate-icon-ico.mjs",
+    "release": "npm run build && electron-builder --mac --win --publish never",
+    "release:mac": "npm run build && electron-builder --mac --publish never",
+    "release:win": "npm run build && electron-builder --win --publish never",
+    "release:linux": "npm run build && electron-builder --linux --publish never",
+    "test": "npm run test:check && npm run test:unit",
+    "test:check": "node tests/check/binaries.mjs",
+    "test:check:mac-arm64": "node tests/check/binaries.mjs --platform mac-arm64",
+    "test:check:mac-x64": "node tests/check/binaries.mjs --platform mac-x64",
+    "test:check:win": "node tests/check/binaries.mjs --platform win",
+    "test:check:linux": "node tests/check/binaries.mjs --platform linux",
+    "test:unit": "vitest run --config tests/vitest.config.ts",
+    "test:unit:watch": "vitest --config tests/vitest.config.ts",
+    "test:e2e": "playwright test --config tests/playwright.config.ts",
+    "test:e2e:smoke": "playwright test --config tests/playwright.config.ts --project=smoke",
+    "test:e2e:headed": "playwright test --config tests/playwright.config.ts --headed",
+    "i18n:extract": "i18next",
+    "i18n:translate": "node scripts/translate-i18n.mjs",
+    "i18n": "npm run i18n:extract && npm run i18n:translate"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.1.76",
+    "@anthropic-ai/claude-code": "latest",
+    "@anthropic-ai/sdk": "latest",
+    "@codemirror/commands": "^6.10.1",
+    "@codemirror/lang-cpp": "^6.0.3",
+    "@codemirror/lang-css": "^6.3.1",
+    "@codemirror/lang-go": "^6.0.1",
+    "@codemirror/lang-html": "^6.4.11",
+    "@codemirror/lang-java": "^6.0.2",
+    "@codemirror/lang-javascript": "^6.2.4",
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/lang-markdown": "^6.5.0",
+    "@codemirror/lang-php": "^6.0.2",
+    "@codemirror/lang-python": "^6.2.1",
+    "@codemirror/lang-rust": "^6.0.2",
+    "@codemirror/lang-sql": "^6.10.0",
+    "@codemirror/lang-vue": "^0.1.3",
+    "@codemirror/lang-xml": "^6.1.0",
+    "@codemirror/lang-yaml": "^6.1.2",
+    "@codemirror/language": "^6.12.1",
+    "@codemirror/legacy-modes": "^6.5.2",
+    "@codemirror/search": "^6.6.0",
+    "@codemirror/state": "^6.5.4",
+    "@codemirror/view": "^6.39.11",
+    "@electron-toolkit/preload": "^3.0.0",
+    "@electron-toolkit/utils": "^3.0.0",
+    "@lezer/highlight": "^1.2.3",
+    "@modelcontextprotocol/server-filesystem": "^2026.1.14",
+    "@modelcontextprotocol/server-memory": "^2026.1.26",
+    "@playwright/mcp": "^0.0.59",
+    "@replit/codemirror-lang-svelte": "^6.0.0",
+    "@tailwindcss/typography": "^0.5.19",
+    "@types/chokidar": "^1.7.5",
+    "@types/diff": "^7.0.2",
+    "chokidar": "^5.0.0",
+    "cloudflared": "^0.7.1",
+    "clsx": "^2.1.0",
+    "diff": "^8.0.2",
+    "electron-updater": "^6.6.2",
+    "express": "^5.1.0",
+    "fix-path": "^5.0.0",
+    "highlight.js": "^11.11.1",
+    "i18next": "^25.7.4",
+    "lucide-react": "^0.555.0",
+    "qrcode": "^1.5.4",
+    "quick-chart-mcp": "^1.0.14",
+    "react": "^18.2.0",
+    "react-arborist": "^3.4.3",
+    "react-diff-viewer-continued": "^3.4.0",
+    "react-dom": "^18.2.0",
+    "react-i18next": "^16.5.2",
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "rehype-raw": "^7.0.0",
+    "remark-gfm": "^4.0.1",
+    "tailwind-merge": "^2.2.0",
+    "uuid": "^13.0.0",
+    "ws": "^8.18.3",
+    "zod": "^3.24.1",
+    "zustand": "^4.5.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "@types/express": "^5.0.5",
+    "@types/node": "^20.10.0",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/uuid": "^11.0.0",
+    "@types/ws": "^8.18.1",
+    "@vitejs/plugin-react": "^4.2.0",
+    "autoprefixer": "^10.4.16",
+    "cross-env": "^10.1.0",
+    "electron": "^32.3.3",
+    "electron-builder": "24.13.1",
+    "electron-vite": "^2.0.0",
+    "i18next-parser": "^9.3.0",
+    "patch-package": "^8.0.1",
+    "playwright": "^1.57.0",
+    "postcss": "^8.4.32",
+    "sharp": "^0.34.5",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.3.0",
+    "vite": "^5.0.0",
+    "vitest": "^1.6.1"
+  },
+  "build": {
+    "appId": "com.project4.app",
+    "productName": "Project4",
+    "afterPack": "./scripts/afterPack.cjs",
+    "directories": {
+      "buildResources": "resources"
+    },
+    "files": [
+      "out/**/*",
+      "resources/**/*",
+      "product.json",
+      "project4-local/dist/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/cloudflared/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/python-arm64",
+        "to": "python-arm64",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "resources/python-x64",
+        "to": "python-x64",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "resources/python-win-x64",
+        "to": "python-win-x64",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "resources/skills",
+        "to": "skills",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "publish": null,
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "resources/icon.icns",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "notarize": false,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "window": {
+        "width": 540,
+        "height": 380
+      },
+      "contents": [
+        {
+          "x": 130,
+          "y": 180
+        },
+        {
+          "x": 410,
+          "y": 180,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "win": {
+      "icon": "resources/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "linux": {
+      "icon": "resources/linux",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    }
+  }
+}

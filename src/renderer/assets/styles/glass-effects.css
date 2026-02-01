@@ -1,0 +1,49 @@
+/* ============================================
+   Glass Effects - Apple Style
+   macOS 风格的玻璃态效果
+   ============================================ */
+
+/* 标准玻璃面板 */
+.glass-panel {
+  background: hsl(var(--glass-bg));
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border: 1px solid hsl(var(--glass-border));
+}
+
+/* 轻量玻璃面板 */
+.glass-panel-light {
+  background: hsl(var(--glass-bg));
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border: 1px solid hsl(var(--glass-border));
+}
+
+/* Header 玻璃效果 */
+.glass-header {
+  background: hsl(var(--background-elevated) / 0.8);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+}
+
+/* 悬浮面板玻璃效果 */
+.glass-floating {
+  background: hsl(var(--card) / 0.9);
+  backdrop-filter: blur(60px) saturate(200%);
+  -webkit-backdrop-filter: blur(60px) saturate(200%);
+  box-shadow: var(--shadow-xl);
+}
+
+/* 输入框玻璃效果 */
+.glass-input {
+  background: hsl(var(--card) / 0.5);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* 侧边栏玻璃效果 */
+.glass-sidebar {
+  background: hsl(var(--card) / 0.6);
+  backdrop-filter: blur(30px) saturate(150%);
+  -webkit-backdrop-filter: blur(30px) saturate(150%);
+}

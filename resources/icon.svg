@@ -1,0 +1,111 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Apple 蓝色渐变背景 -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#007AFF" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#0051D5" stop-opacity="1"/>
+    </linearGradient>
+
+    <!-- 发光效果 -->
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- 圆角矩形背景 - Apple 风格 -->
+  <rect
+    x="102"
+    y="102"
+    width="820"
+    height="820"
+    rx="180"
+    ry="180"
+    fill="url(#bgGrad)"
+  />
+
+  <!-- Bot 机器人图标 - 基于 Lucide Bot 图标 -->
+  <g transform="translate(512, 512)" filter="url(#glow)">
+    <!-- 机器人头部 -->
+    <rect
+      x="-180"
+      y="-120"
+      width="360"
+      height="280"
+      rx="40"
+      ry="40"
+      fill="white"
+      stroke="white"
+      stroke-width="8"
+    />
+
+    <!-- 天线 -->
+    <line
+      x1="0"
+      y1="-120"
+      x2="0"
+      y2="-200"
+      stroke="white"
+      stroke-width="12"
+      stroke-linecap="round"
+    />
+
+    <!-- 天线顶部圆球 -->
+    <circle
+      cx="0"
+      cy="-200"
+      r="24"
+      fill="white"
+    />
+
+    <!-- 左眼 -->
+    <circle
+      cx="-80"
+      cy="-40"
+      r="32"
+      fill="#007AFF"
+    />
+
+    <!-- 右眼 -->
+    <circle
+      cx="80"
+      cy="-40"
+      r="32"
+      fill="#007AFF"
+    />
+
+    <!-- 嘴巴 - 微笑弧线 -->
+    <path
+      d="M -60 40 Q 0 80 60 40"
+      fill="none"
+      stroke="#007AFF"
+      stroke-width="12"
+      stroke-linecap="round"
+    />
+
+    <!-- 左耳 -->
+    <rect
+      x="-220"
+      y="-60"
+      width="40"
+      height="80"
+      rx="20"
+      ry="20"
+      fill="white"
+    />
+
+    <!-- 右耳 -->
+    <rect
+      x="180"
+      y="-60"
+      width="40"
+      height="80"
+      rx="20"
+      ry="20"
+      fill="white"
+    />
+  </g>
+</svg>
