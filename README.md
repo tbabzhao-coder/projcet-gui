@@ -25,10 +25,10 @@ An AI-powered productivity assistant built with Claude Agent SDK.
 # Install dependencies
 npm install
 
-# Prepare Python runtime and MCP servers
+# Prepare Python runtime, MCP servers, and dependencies
 npm run prepare:mac-arm64  # For Apple Silicon
 npm run prepare:mac-x64    # For Intel Mac
-npm run prepare:win-x64    # For Windows
+npm run prepare:win-x64    # For Windows (includes Git Bash)
 
 # Start development server
 npm run dev

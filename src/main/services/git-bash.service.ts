@@ -20,9 +20,10 @@ export interface GitBashDetectionResult {
  *
  * Detection order:
  * 1. Environment variable (CLAUDE_CODE_GIT_BASH_PATH)
- * 2. App-local installation (userData/git-bash)
- * 3. System installation (Program Files)
- * 4. PATH-based discovery
+ * 2. Bundled Git Bash (extraResources/git-bash-win-x64) - NEW!
+ * 3. App-local installation (userData/git-bash)
+ * 4. System installation (Program Files)
+ * 5. PATH-based discovery
  */
 export function detectGitBash(): GitBashDetectionResult {
   // Non-Windows platforms use system bash
@@ -37,14 +38,21 @@ export function detectGitBash(): GitBashDetectionResult {
     return { found: true, path: envPath, source: 'env-var' }
   }
 
-  // 2. Check app-local installation (managed by Project4)
+  // 2. Check bundled Git Bash (packaged with app)
+  const bundledGitBash = getBundledGitBashPath()
+  if (bundledGitBash && existsSync(bundledGitBash)) {
+    console.log('[GitBash] Found bundled installation:', bundledGitBash)
+    return { found: true, path: bundledGitBash, source: 'app-local' }
+  }
+
+  // 3. Check app-local installation (downloaded at runtime)
   const localGitBash = join(app.getPath('userData'), 'git-bash', 'bin', 'bash.exe')
   if (existsSync(localGitBash)) {
     console.log('[GitBash] Found app-local installation:', localGitBash)
     return { found: true, path: localGitBash, source: 'app-local' }
   }
 
-  // 3. Check system installation paths
+  // 4. Check system installation paths
   const systemPaths = [
     join(process.env.PROGRAMFILES || '', 'Git', 'bin', 'bash.exe'),
     join(process.env['PROGRAMFILES(X86)'] || '', 'Git', 'bin', 'bash.exe'),
@@ -60,7 +68,7 @@ export function detectGitBash(): GitBashDetectionResult {
     }
   }
 
-  // 4. Try to find git in PATH and derive bash path
+  // 5. Try to find git in PATH and derive bash path
   const gitFromPath = findGitInPath()
   if (gitFromPath) {
     // Git is typically at: C:\Program Files\Git\cmd\git.exe
@@ -90,6 +98,31 @@ function findGitInPath(): string | null {
     }
   }
   return null
+}
+
+/**
+ * Get the path to the bundled Git Bash (packaged with app)
+ * Returns null if not found or not in production mode
+ */
+function getBundledGitBashPath(): string | null {
+  const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
+
+  if (isDev) {
+    // Development: check resources/git-bash-win-x64
+    const projectRoot = join(__dirname, '../..')
+    const devPath = join(projectRoot, 'resources', 'git-bash-win-x64', 'bin', 'bash.exe')
+    return existsSync(devPath) ? devPath : null
+  } else {
+    // Production: check extraResources
+    try {
+      const resourcesPath = process.resourcesPath || app.getPath('resources')
+      const prodPath = join(resourcesPath, 'git-bash-win-x64', 'bin', 'bash.exe')
+      return existsSync(prodPath) ? prodPath : null
+    } catch (error) {
+      console.error('[GitBash] Error getting bundled path:', error)
+      return null
+    }
+  }
 }
 
 /**

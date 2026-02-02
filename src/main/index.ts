@@ -307,8 +307,34 @@ app.whenReady().then(async () => {
   // Register custom protocols (project4-file://, etc.)
   registerProtocols()
 
-  // Default open or close DevTools by F12 in development
+  // Enable F12 to toggle DevTools in all environments
+  // Also enable Esc to close window and zoom shortcuts
   app.on('browser-window-created', (_, window) => {
+    // Custom shortcut handler that works in production too
+    window.webContents.on('before-input-event', (event, input) => {
+      if (input.type === 'keyDown') {
+        // F12: Toggle DevTools (works in production)
+        if (input.code === 'F12') {
+          if (window.webContents.isDevToolsOpened()) {
+            window.webContents.closeDevTools()
+          } else {
+            window.webContents.openDevTools({ mode: 'detach' })
+          }
+          event.preventDefault()
+        }
+        // Ctrl/Cmd + Shift + I: Alternative DevTools shortcut
+        else if (input.code === 'KeyI' && input.shift && (input.control || input.meta)) {
+          if (window.webContents.isDevToolsOpened()) {
+            window.webContents.closeDevTools()
+          } else {
+            window.webContents.openDevTools({ mode: 'detach' })
+          }
+          event.preventDefault()
+        }
+      }
+    })
+
+    // Still use optimizer for other shortcuts (zoom, etc.)
     optimizer.watchWindowShortcuts(window)
   })
 

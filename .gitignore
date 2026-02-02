@@ -48,5 +48,8 @@ release
 # Python runtime (bundled, don't commit)
 resources/python-*
 
+# Git Bash for Windows (bundled, don't commit)
+resources/git-bash-win-x64
+
 # Test files
 test-*.mjs
