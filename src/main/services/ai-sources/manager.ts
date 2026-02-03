@@ -1,10 +1,10 @@
 /**
- * AI Source Manager
+ * AI Source Manager (v2)
  *
  * Central manager for all AI source providers.
  * Responsible for:
  * - Provider registration and lifecycle
- * - Configuration management
+ * - Configuration management (v2 format with sources array)
  * - Backend config generation for OpenAI compat router
  * - OAuth flow coordination
  *
@@ -13,33 +13,42 @@
  * - Decoupled from specific provider implementations
  * - Dynamic provider loading via auth-loader
  * - Thread-safe singleton pattern
+ * - Supports v2 AISourcesConfig format
  */
 
+import { v4 as uuidv4 } from 'uuid'
 import type {
   AISourceProvider,
   OAuthAISourceProvider,
   ProviderResult
 } from '../../../shared/interfaces'
-import type {
-  AISourceType,
-  AISourcesConfig,
-  BackendRequestConfig,
-  OAuthSourceConfig,
-  OAuthStartResult,
-  OAuthCompleteResult
+import {
+  getCurrentSource,
+  createEmptyAISourcesConfig,
+  AVAILABLE_MODELS,
+  type AISourceType,
+  type AISourcesConfig,
+  type AISource,
+  type BackendRequestConfig,
+  type OAuthStartResult,
+  type OAuthCompleteResult,
+  type ModelOption,
+  type ProviderId
 } from '../../../shared/types'
+import { getBuiltinProvider, isAnthropicProvider } from '../../../shared/constants'
 import { getConfig, saveConfig } from '../config.service'
 import { getCustomProvider } from './providers/custom.provider'
 import { getGitHubCopilotProvider } from './providers/github-copilot.provider'
-import { loadAuthProvidersAsync, isOAuthProvider as isOAuthProviderCheck, type LoadedProvider } from './auth-loader'
-import { decryptString, decryptTokens } from '../secure-storage.service'
+import { loadAuthProvidersAsync } from './auth-loader'
+import { decryptString } from '../secure-storage.service'
+import { normalizeApiUrl } from '../../openai-compat-router'
 
 /**
  * Extended OAuth provider interface for token management
  */
 interface OAuthProviderWithTokenManagement extends OAuthAISourceProvider {
-  checkTokenWithConfig?(config: AISourcesConfig): { valid: boolean; expiresIn?: number; needsRefresh: boolean }
-  refreshTokenWithConfig?(config: AISourcesConfig): Promise<ProviderResult<{
+  checkTokenWithConfig?(config: any): { valid: boolean; expiresIn?: number; needsRefresh: boolean }
+  refreshTokenWithConfig?(config: any): Promise<ProviderResult<{
     accessToken: string
     refreshToken: string
     expiresAt: number
@@ -65,15 +74,12 @@ class AISourceManager {
 
   /**
    * Async initialization - loads providers from product.json configuration
-   * This is the core configuration-driven loading mechanism
    */
   private async initializeAsync(): Promise<void> {
-    // Load all providers based on product.json configuration
     const loadedProviders = await loadAuthProvidersAsync()
 
     for (const loaded of loadedProviders) {
       if (loaded.config.builtin) {
-        // Built-in providers are already registered in constructor
         continue
       }
 
@@ -120,12 +126,90 @@ class AISourceManager {
   }
 
   /**
-   * Get the current active provider based on config
+   * Get aiSources config from HaloConfig (v2 format)
+   * Includes automatic migration from v1 format
    */
-  getCurrentProvider(): AISourceProvider | null {
+  private getAiSourcesConfig(): AISourcesConfig {
     const config = getConfig() as any
-    const aiSources: AISourcesConfig = config.aiSources || { current: 'custom' }
-    return this.providers.get(aiSources.current) || null
+    const aiSources = config.aiSources
+
+    // Already v2 format
+    if (aiSources?.version === 2 && Array.isArray(aiSources.sources)) {
+      return aiSources
+    }
+
+    // Migrate from v1 format if exists
+    if (aiSources && typeof aiSources === 'object') {
+      console.log('[AISourceManager] Detected v1 config, migrating to v2...')
+      const v2Config = this.migrateV1ToV2(aiSources)
+      // Save migrated config
+      saveConfig({ aiSources: v2Config } as any)
+      console.log('[AISourceManager] Migration complete, saved v2 config')
+      return v2Config
+    }
+
+    return createEmptyAISourcesConfig()
+  }
+
+  /**
+   * Migrate v1 aiSources config to v2 format
+   */
+  private migrateV1ToV2(v1Config: any): AISourcesConfig {
+    const sources: AISource[] = []
+    const now = new Date().toISOString()
+
+    // Migrate custom source
+    if (v1Config.custom?.apiKey) {
+      sources.push({
+        id: v1Config.custom.id || 'migrated-custom',
+        name: v1Config.custom.name || 'Custom API',
+        provider: v1Config.custom.provider || 'anthropic',
+        authType: 'api-key',
+        apiUrl: v1Config.custom.apiUrl || 'https://code.ppchat.vip/',
+        apiKey: v1Config.custom.apiKey,
+        model: v1Config.custom.model || 'claude-sonnet-4-5-20250929',
+        availableModels: AVAILABLE_MODELS,
+        createdAt: now,
+        updatedAt: now
+      })
+    }
+
+    // Migrate custom_xxx sources
+    for (const key of Object.keys(v1Config)) {
+      if (key.startsWith('custom_') && v1Config[key]?.apiKey) {
+        const v1Source = v1Config[key]
+        sources.push({
+          id: v1Source.id || key.replace('custom_', ''),
+          name: v1Source.name || key,
+          provider: v1Source.provider || 'anthropic',
+          authType: 'api-key',
+          apiUrl: v1Source.apiUrl || 'https://code.ppchat.vip/',
+          apiKey: v1Source.apiKey,
+          model: v1Source.model || 'claude-sonnet-4-5-20250929',
+          availableModels: AVAILABLE_MODELS,
+          createdAt: now,
+          updatedAt: now
+        })
+      }
+    }
+
+    // Determine currentId
+    let currentId: string | null = sources.length > 0 ? sources[0].id : null
+    const v1Current = v1Config.current
+    if (v1Current?.startsWith('custom_')) {
+      const match = sources.find(s => s.id === v1Current.replace('custom_', ''))
+      if (match) currentId = match.id
+    }
+
+    return { version: 2, currentId, sources }
+  }
+
+  /**
+   * Get the current active source
+   */
+  getCurrentSourceConfig(): AISource | null {
+    const aiSources = this.getDecryptedAiSources()
+    return getCurrentSource(aiSources)
   }
 
   /**
@@ -133,225 +217,358 @@ class AISourceManager {
    * This is the main method used by agent.service.ts
    */
   getBackendConfig(): BackendRequestConfig | null {
-    // Use decrypted config for providers to read tokens
     const aiSources = this.getDecryptedAiSources()
+    const source = getCurrentSource(aiSources)
 
-    // Debug logging
-    console.log('[AISourceManager] ========== getBackendConfig START ==========')
-    console.log('[AISourceManager] current source:', aiSources.current)
-    console.log('[AISourceManager] aiSources keys:', Object.keys(aiSources))
+    console.log('[AISourceManager] getBackendConfig called')
+    console.log('[AISourceManager] currentId:', aiSources.currentId)
+    console.log('[AISourceManager] sources count:', aiSources.sources.length)
 
-    // Log custom config details
-    if (aiSources.custom) {
-      const key = aiSources.custom.apiKey || ''
-      console.log('[AISourceManager] custom.apiKey:', key ? key.substring(0, 10) + '...' + key.substring(key.length - 10) : 'NOT SET')
-      console.log('[AISourceManager] custom.apiUrl:', aiSources.custom.apiUrl)
-      console.log('[AISourceManager] custom.provider:', aiSources.custom.provider)
-      console.log('[AISourceManager] custom.model:', aiSources.custom.model)
-    } else {
-      console.log('[AISourceManager] custom config is NULL or UNDEFINED')
-    }
-
-    // Map custom_xxx sources to 'custom' provider
-    const currentSource = aiSources.current || 'custom'
-    const providerType = (currentSource === 'custom' || currentSource.startsWith('custom_'))
-      ? 'custom'
-      : currentSource
-
-    console.log('[AISourceManager] currentSource:', currentSource, '-> providerType:', providerType)
-
-    const provider = this.providers.get(providerType)
-
-    if (!provider) {
-      console.warn(`[AISourceManager] ❌ No provider found for source: ${currentSource} (mapped to: ${providerType})`)
-      console.log('[AISourceManager] Available providers:', Array.from(this.providers.keys()))
+    if (!source) {
+      console.warn('[AISourceManager] No current source configured')
       return null
     }
 
-    console.log('[AISourceManager] ✅ Found provider:', provider.type, `(for source: ${currentSource})`)
+    console.log('[AISourceManager] Found source:', source.name, 'provider:', source.provider)
 
-    if (!provider.isConfigured(aiSources)) {
-      console.warn(`[AISourceManager] ❌ Provider ${providerType} is not configured for source: ${currentSource}`)
+    // Check if source is configured
+    if (source.authType === 'api-key' && !source.apiKey) {
+      console.warn('[AISourceManager] API key source missing apiKey')
+      return null
+    }
+    if (source.authType === 'oauth' && !source.accessToken) {
+      console.warn('[AISourceManager] OAuth source missing accessToken')
       return null
     }
 
-    console.log('[AISourceManager] ✅ Provider is configured, calling provider.getBackendConfig()')
-    const result = provider.getBackendConfig(aiSources)
-
-    if (result) {
-      const key = result.key || ''
-      console.log('[AISourceManager] ✅ getBackendConfig result:')
-      console.log('[AISourceManager]   - url:', result.url)
-      console.log('[AISourceManager]   - model:', result.model)
-      console.log('[AISourceManager]   - key:', key ? key.substring(0, 10) + '...' + key.substring(key.length - 10) : 'NOT SET')
-      console.log('[AISourceManager]   - apiType:', result.apiType)
-    } else {
-      console.log('[AISourceManager] ❌ getBackendConfig returned NULL')
+    // OAuth: delegate to provider (handles token exchange, custom headers, etc.)
+    if (source.authType === 'oauth') {
+      const provider = this.providers.get(source.provider)
+      if (!provider) {
+        console.warn(`[AISourceManager] No provider found for OAuth source: ${source.provider}`)
+        return null
+      }
+      const legacyConfig = this.buildLegacyOAuthConfig(source)
+      return provider.getBackendConfig(legacyConfig)
     }
 
-    console.log('[AISourceManager] ========== getBackendConfig END ==========')
+    // API Key: build config directly
+    const isAnthropic = isAnthropicProvider(source.provider)
 
-    return result
+    // Normalize URL: Anthropic uses base URL, OpenAI compatible needs /chat/completions suffix
+    const normalizedUrl = isAnthropic
+      ? source.apiUrl
+      : normalizeApiUrl(source.apiUrl, 'openai')
+
+    // Build backend config
+    const config: BackendRequestConfig = {
+      url: normalizedUrl,
+      key: source.apiKey!,
+      model: source.model
+    }
+
+    // Set API type for OpenAI compatible providers
+    if (!isAnthropic) {
+      config.apiType = source.apiType || 'chat_completions'
+    }
+
+    console.log('[AISourceManager] getBackendConfig result:', {
+      url: config.url,
+      model: config.model,
+      hasKey: !!config.key,
+      apiType: config.apiType
+    })
+
+    return config
   }
 
   /**
    * Check if any AI source is configured
    */
   hasAnySource(): boolean {
-    const config = getConfig() as any
-    const aiSources: AISourcesConfig = config.aiSources || { current: 'custom' }
-
-    for (const provider of this.providers.values()) {
-      if (provider.isConfigured(aiSources)) {
-        return true
-      }
-    }
-    return false
+    const aiSources = this.getAiSourcesConfig()
+    return aiSources.sources.some(s => {
+      if (s.authType === 'api-key') return !!s.apiKey
+      return !!s.accessToken
+    })
   }
 
   /**
    * Check if a specific source is configured
    */
-  isSourceConfigured(type: AISourceType): boolean {
-    const config = getConfig() as any
-    const aiSources: AISourcesConfig = config.aiSources || { current: 'custom' }
-    const provider = this.providers.get(type)
+  isSourceConfigured(sourceId: string): boolean {
+    const aiSources = this.getAiSourcesConfig()
+    const source = aiSources.sources.find(s => s.id === sourceId)
+    if (!source) return false
 
-    return provider ? provider.isConfigured(aiSources) : false
+    if (source.authType === 'api-key') return !!source.apiKey
+    return !!source.accessToken
+  }
+
+  // ========== Source CRUD Operations ==========
+
+  /**
+   * Add a new source
+   */
+  addSource(source: AISource): AISourcesConfig {
+    const aiSources = this.getAiSourcesConfig()
+
+    const newSources = [...aiSources.sources, source]
+    const newConfig: AISourcesConfig = {
+      version: 2,
+      currentId: aiSources.currentId || source.id,
+      sources: newSources
+    }
+
+    saveConfig({ aiSources: newConfig } as any)
+    console.log(`[AISourceManager] Added source: ${source.name} (${source.id})`)
+
+    return newConfig
+  }
+
+  /**
+   * Update an existing source
+   */
+  updateSource(sourceId: string, updates: Partial<AISource>): AISourcesConfig {
+    const aiSources = this.getAiSourcesConfig()
+
+    const newConfig: AISourcesConfig = {
+      ...aiSources,
+      sources: aiSources.sources.map(s =>
+        s.id === sourceId
+          ? { ...s, ...updates, updatedAt: new Date().toISOString() }
+          : s
+      )
+    }
+
+    saveConfig({ aiSources: newConfig } as any)
+    console.log(`[AISourceManager] Updated source: ${sourceId}`)
+
+    return newConfig
+  }
+
+  /**
+   * Delete a source
+   */
+  deleteSource(sourceId: string): AISourcesConfig {
+    const aiSources = this.getAiSourcesConfig()
+
+    const newSources = aiSources.sources.filter(s => s.id !== sourceId)
+    let newCurrentId = aiSources.currentId
+
+    // If deleted was current, switch to first available
+    if (aiSources.currentId === sourceId) {
+      newCurrentId = newSources.length > 0 ? newSources[0].id : null
+    }
+
+    const newConfig: AISourcesConfig = {
+      version: 2,
+      currentId: newCurrentId,
+      sources: newSources
+    }
+
+    saveConfig({ aiSources: newConfig } as any)
+    console.log(`[AISourceManager] Deleted source: ${sourceId}`)
+
+    return newConfig
+  }
+
+  /**
+   * Set current source
+   */
+  setCurrentSource(sourceId: string): AISourcesConfig {
+    const aiSources = this.getAiSourcesConfig()
+
+    if (!aiSources.sources.some(s => s.id === sourceId)) {
+      console.warn(`[AISourceManager] Source not found: ${sourceId}`)
+      return aiSources
+    }
+
+    const newConfig: AISourcesConfig = {
+      ...aiSources,
+      currentId: sourceId
+    }
+
+    saveConfig({ aiSources: newConfig } as any)
+    console.log(`[AISourceManager] Set current source: ${sourceId}`)
+
+    return newConfig
+  }
+
+  /**
+   * Set model for current source
+   */
+  setCurrentModel(modelId: string): AISourcesConfig {
+    const aiSources = this.getAiSourcesConfig()
+    if (!aiSources.currentId) return aiSources
+
+    return this.updateSource(aiSources.currentId, { model: modelId })
   }
 
   // ========== OAuth Methods ==========
 
   /**
-   * Start OAuth login for a source
+   * Start OAuth login for a provider type
    */
-  async startOAuthLogin(type: AISourceType): Promise<ProviderResult<OAuthStartResult>> {
-    // Ensure async initialization is complete
+  async startOAuthLogin(providerType: ProviderId): Promise<ProviderResult<OAuthStartResult>> {
     await this.ensureInitialized()
 
-    const provider = this.providers.get(type)
+    const provider = this.providers.get(providerType)
     if (!provider) {
-      return { success: false, error: `Unknown source type: ${type}` }
+      return { success: false, error: `Unknown provider type: ${providerType}` }
     }
 
     if (!this.isOAuthProvider(provider)) {
-      return { success: false, error: `Source ${type} does not support OAuth` }
+      return { success: false, error: `Provider ${providerType} does not support OAuth` }
     }
 
     return provider.startLogin()
   }
 
   /**
-   * Complete OAuth login for a source
+   * Complete OAuth login for a provider type
    */
   async completeOAuthLogin(
-    type: AISourceType,
+    providerType: ProviderId,
     state: string
   ): Promise<ProviderResult<OAuthCompleteResult>> {
     await this.ensureInitialized()
-    const provider = this.providers.get(type)
+
+    const provider = this.providers.get(providerType)
     if (!provider) {
-      return { success: false, error: `Unknown source type: ${type}` }
+      return { success: false, error: `Unknown provider type: ${providerType}` }
     }
 
     if (!this.isOAuthProvider(provider)) {
-      return { success: false, error: `Source ${type} does not support OAuth` }
+      return { success: false, error: `Provider ${providerType} does not support OAuth` }
     }
 
     const result = await provider.completeLogin(state)
 
     if (result.success && result.data) {
-      // Update config with login result
-      await this.handleOAuthLoginSuccess(type, result.data)
+      await this.handleOAuthLoginSuccess(providerType, result.data)
     }
 
     return result
   }
 
   /**
-   * Handle successful OAuth login
+   * Handle successful OAuth login - create or update OAuth source in v2 format
+   * If a source with the same provider already exists, update it instead of creating a new one
    */
   private async handleOAuthLoginSuccess(
-    type: AISourceType,
+    providerType: ProviderId,
     loginResult: OAuthCompleteResult
   ): Promise<void> {
-    const config = getConfig() as any
-    const aiSources: AISourcesConfig = config.aiSources || { current: 'custom', custom: config.aiSources?.custom }
-
-    // Extract token data from login result
     const data = loginResult as any
     const tokenData = data._tokenData
-    const availableModels = data._availableModels || []
-    const modelNames = data._modelNames || {}
+    const availableModels: string[] = data._availableModels || []
+    const modelNames: Record<string, string> = data._modelNames || {}
     const defaultModel = data._defaultModel || ''
 
-    // Generic OAuth config structure
-    // NOTE: Tokens stored as plaintext to avoid macOS Keychain prompts
-    // Old encrypted tokens (enc: prefix) are still readable for backward compatibility
-    const oauthConfig: OAuthSourceConfig = {
-      loggedIn: true,
-      user: {
-        name: loginResult.user?.name || '',
-        uid: tokenData?.uid || ''  // Store uid for API headers (ASCII-safe)
-      },
-      model: defaultModel,
-      availableModels,
-      modelNames,  // Store model display names mapping
-      accessToken: tokenData?.accessToken || '',
-      refreshToken: tokenData?.refreshToken || '',
-      tokenExpires: tokenData?.expiresAt
+    const builtin = getBuiltinProvider(providerType)
+    const now = new Date().toISOString()
+
+    // Convert to ModelOption format
+    const models: ModelOption[] = availableModels.map(id => ({
+      id,
+      name: modelNames[id] || id
+    }))
+
+    if (models.length === 0 && defaultModel) {
+      models.push({ id: defaultModel, name: modelNames[defaultModel] || defaultModel })
     }
 
-    // Store as the active OAuth source
-    aiSources.current = type
-    aiSources[type] = oauthConfig
+    const aiSources = this.getAiSourcesConfig()
+
+    // Check if an OAuth source with the same provider already exists
+    const existingSource = aiSources.sources.find(
+      s => s.provider === providerType && s.authType === 'oauth'
+    )
+
+    let newSources: AISource[]
+    let sourceId: string
+
+    if (existingSource) {
+      // Update existing source
+      sourceId = existingSource.id
+      newSources = aiSources.sources.map(s => {
+        if (s.id === existingSource.id) {
+          return {
+            ...s,
+            accessToken: tokenData?.accessToken || '',
+            refreshToken: tokenData?.refreshToken || '',
+            tokenExpires: tokenData?.expiresAt,
+            user: {
+              name: loginResult.user?.name || '',
+              uid: tokenData?.uid || ''
+            },
+            model: defaultModel || s.model,
+            availableModels: models.length > 0 ? models : s.availableModels,
+            updatedAt: now
+          }
+        }
+        return s
+      })
+      console.log(`[AISourceManager] OAuth login for ${providerType} updated existing source: ${sourceId}`)
+    } else {
+      // Create new source
+      sourceId = uuidv4()
+      const newSource: AISource = {
+        id: sourceId,
+        name: builtin?.name || providerType,
+        provider: providerType,
+        authType: 'oauth',
+        apiUrl: '',
+        accessToken: tokenData?.accessToken || '',
+        refreshToken: tokenData?.refreshToken || '',
+        tokenExpires: tokenData?.expiresAt,
+        user: {
+          name: loginResult.user?.name || '',
+          uid: tokenData?.uid || ''
+        },
+        model: defaultModel,
+        availableModels: models,
+        createdAt: now,
+        updatedAt: now
+      }
+      newSources = [...aiSources.sources, newSource]
+      console.log(`[AISourceManager] OAuth login for ${providerType} created new source: ${sourceId}`)
+    }
+
+    const newConfig: AISourcesConfig = {
+      version: 2,
+      currentId: sourceId,
+      sources: newSources
+    }
 
     saveConfig({
-      aiSources,
+      aiSources: newConfig,
       isFirstLaunch: false
     } as any)
-
-    console.log(`[AISourceManager] OAuth login for ${type} saved to config`)
   }
 
   /**
-   * Logout from a source
+   * Logout from a source (for OAuth sources)
    */
-  async logout(type: AISourceType): Promise<ProviderResult<void>> {
-    const provider = this.providers.get(type)
-    if (!provider) {
-      return { success: false, error: `Unknown source type: ${type}` }
+  async logout(sourceId: string): Promise<ProviderResult<void>> {
+    const aiSources = this.getAiSourcesConfig()
+    const source = aiSources.sources.find(s => s.id === sourceId)
+
+    if (!source) {
+      return { success: false, error: 'Source not found' }
     }
 
-    if (this.isOAuthProvider(provider)) {
-      await provider.logout()
-    }
-
-    // Update config - remove the OAuth source
-    const config = getConfig() as any
-    const aiSources: AISourcesConfig = config.aiSources || { current: 'custom' }
-
-    const wasCurrent = aiSources.current === type
-
-    // Delete the provider's config
-    delete aiSources[type]
-
-    if (wasCurrent) {
-      // Switch to custom if available, otherwise pick another logged-in provider
-      if (aiSources.custom?.apiKey) {
-        aiSources.current = 'custom'
-      } else {
-        const fallback = Object.keys(aiSources).find(key => {
-          if (key === 'current' || key === 'custom') return false
-          const source = aiSources[key] as OAuthSourceConfig | undefined
-          return source?.loggedIn === true
-        })
-        aiSources.current = (fallback as AISourceType) || 'custom'
+    // Call provider logout if OAuth
+    if (source.authType === 'oauth') {
+      const provider = this.providers.get(source.provider)
+      if (provider && this.isOAuthProvider(provider)) {
+        await provider.logout()
       }
     }
 
-    saveConfig({ aiSources } as any)
-    console.log(`[AISourceManager] Logout complete for ${type}`)
+    this.deleteSource(sourceId)
+    console.log(`[AISourceManager] Logout complete for source: ${sourceId}`)
 
     return { success: true }
   }
@@ -361,47 +578,40 @@ class AISourceManager {
   /**
    * Check and refresh token if needed (for OAuth sources)
    */
-  async ensureValidToken(type: AISourceType): Promise<ProviderResult<void>> {
-    const provider = this.providers.get(type) as OAuthProviderWithTokenManagement | undefined
-    if (!provider) {
-      return { success: false, error: 'Provider not found' }
-    }
+  async ensureValidToken(sourceId: string): Promise<ProviderResult<void>> {
+    const aiSources = this.getDecryptedAiSources()
+    const source = aiSources.sources.find(s => s.id === sourceId)
 
-    // Check if provider supports token management
-    if (!provider.checkTokenWithConfig || !provider.refreshTokenWithConfig) {
-      // Provider doesn't need token management
+    if (!source || source.authType !== 'oauth') {
       return { success: true }
     }
 
-    // Use decrypted config for token operations
-    const aiSources = this.getDecryptedAiSources()
+    const provider = this.providers.get(source.provider) as OAuthProviderWithTokenManagement | undefined
+    if (!provider?.checkTokenWithConfig || !provider?.refreshTokenWithConfig) {
+      return { success: true }
+    }
 
-    const tokenStatus = provider.checkTokenWithConfig(aiSources)
+    // Build legacy config format for provider
+    const legacyConfig = this.buildLegacyOAuthConfig(source)
+    const tokenStatus = provider.checkTokenWithConfig(legacyConfig)
 
     if (!tokenStatus.valid) {
       return { success: false, error: 'Token expired' }
     }
 
     if (tokenStatus.needsRefresh) {
-      console.log(`[AISourceManager] Token for ${type} needs refresh, refreshing...`)
-      const refreshResult = await provider.refreshTokenWithConfig(aiSources)
+      console.log(`[AISourceManager] Token for ${source.name} needs refresh, refreshing...`)
+      const refreshResult = await provider.refreshTokenWithConfig(legacyConfig)
 
       if (refreshResult.success && refreshResult.data) {
-        // Get fresh config from disk and update only the refreshed provider
-        const freshConfig = getConfig() as any
-        const freshAiSources: AISourcesConfig = freshConfig.aiSources || { current: 'custom' }
-        const providerConfig = freshAiSources[type] as any
-        if (providerConfig) {
-          // Store tokens as plaintext (no encryption to avoid Keychain prompts)
-          providerConfig.accessToken = refreshResult.data.accessToken
-          providerConfig.refreshToken = refreshResult.data.refreshToken
-          providerConfig.tokenExpires = refreshResult.data.expiresAt
-
-          saveConfig({ aiSources: freshAiSources } as any)
-          console.log('[AISourceManager] Token refreshed and saved')
-        }
+        this.updateSource(sourceId, {
+          accessToken: refreshResult.data.accessToken,
+          refreshToken: refreshResult.data.refreshToken,
+          tokenExpires: refreshResult.data.expiresAt
+        })
+        console.log('[AISourceManager] Token refreshed and saved')
       } else {
-        console.error(`[AISourceManager] Token refresh failed for ${type}:`, refreshResult.error)
+        console.error(`[AISourceManager] Token refresh failed:`, refreshResult.error)
         return refreshResult
       }
     }
@@ -412,63 +622,36 @@ class AISourceManager {
   // ========== Configuration Refresh ==========
 
   /**
-   * Refresh configuration for all sources
+   * Refresh configuration for a specific source
    */
-  async refreshAllConfigs(): Promise<void> {
+  async refreshSourceConfig(sourceId: string): Promise<ProviderResult<void>> {
     await this.ensureInitialized()
-    // Use decrypted config for provider calls
-    const decryptedAiSources = this.getDecryptedAiSources()
-    // Get fresh config from disk for saving (keeps tokens encrypted)
-    const freshConfig = getConfig() as any
-    const aiSources: AISourcesConfig = freshConfig.aiSources || { current: 'custom' }
 
-    for (const provider of this.providers.values()) {
-      if (provider.refreshConfig && provider.isConfigured(decryptedAiSources)) {
-        try {
-          const result = await provider.refreshConfig(decryptedAiSources)
-          if (result.success && result.data) {
-            // Merge non-token updates into fresh config
-            // Provider refreshConfig returns model lists, not tokens
-            Object.assign(aiSources, result.data)
-          }
-        } catch (error) {
-          console.error(`[AISourceManager] Failed to refresh ${provider.type}:`, error)
-        }
-      }
+    const aiSources = this.getDecryptedAiSources()
+    const source = aiSources.sources.find(s => s.id === sourceId)
+
+    if (!source) {
+      return { success: false, error: 'Source not found' }
     }
 
-    // Save merged config (tokens remain encrypted)
-    saveConfig({ aiSources } as any)
+    // For now, just return success - individual providers can implement refresh logic
+    return { success: true }
   }
 
   /**
-   * Refresh configuration for a specific source
+   * Refresh all source configurations
    */
-  async refreshSourceConfig(type: AISourceType): Promise<ProviderResult<void>> {
+  async refreshAllConfigs(): Promise<void> {
     await this.ensureInitialized()
-    const provider = this.providers.get(type)
-    if (!provider?.refreshConfig) {
-      return { success: true }
+    const aiSources = this.getAiSourcesConfig()
+
+    for (const source of aiSources.sources) {
+      try {
+        await this.refreshSourceConfig(source.id)
+      } catch (error) {
+        console.error(`[AISourceManager] Failed to refresh ${source.name}:`, error)
+      }
     }
-
-    // Use decrypted config for provider call
-    const decryptedAiSources = this.getDecryptedAiSources()
-
-    if (!provider.isConfigured(decryptedAiSources)) {
-      return { success: false, error: 'Source not configured' }
-    }
-
-    const result = await provider.refreshConfig(decryptedAiSources)
-
-    if (result.success && result.data) {
-      // Get fresh config from disk and merge updates
-      const freshConfig = getConfig() as any
-      const aiSources: AISourcesConfig = freshConfig.aiSources || { current: 'custom' }
-      Object.assign(aiSources, result.data)
-      saveConfig({ aiSources } as any)
-    }
-
-    return result
   }
 
   // ========== Helper Methods ==========
@@ -478,33 +661,52 @@ class AISourceManager {
   }
 
   /**
-   * Get AISourcesConfig with decrypted tokens and API keys
-   * Use this when passing config to providers that need to read tokens
+   * Build legacy OAuth config format for provider.getBackendConfig()
+   * Converts v2 AISource to v1 format expected by OAuth providers
    */
-  private getDecryptedAiSources(): AISourcesConfig {
-    const config = getConfig() as any
-    const aiSources: AISourcesConfig = config.aiSources || { current: 'custom' }
-
-    // Decrypt tokens for each OAuth provider
-    const decrypted: AISourcesConfig = { ...aiSources }
-    for (const key of Object.keys(decrypted)) {
-      if (key === 'current') continue
-      const providerConfig = decrypted[key]
-      if (providerConfig && typeof providerConfig === 'object') {
-        if (key === 'custom' && 'apiKey' in providerConfig) {
-          // Decrypt custom API key
-          decrypted.custom = {
-            ...providerConfig,
-            apiKey: decryptString((providerConfig as any).apiKey || '')
-          } as any
-        } else if ('accessToken' in providerConfig) {
-          // Decrypt OAuth tokens
-          decrypted[key] = decryptTokens(providerConfig as any)
-        }
+  private buildLegacyOAuthConfig(source: AISource): any {
+    return {
+      current: source.provider,
+      [source.provider]: {
+        loggedIn: true,
+        user: source.user,
+        model: source.model,
+        availableModels: source.availableModels.map(m => m.id),
+        accessToken: source.accessToken,
+        refreshToken: source.refreshToken,
+        tokenExpires: source.tokenExpires
       }
     }
+  }
 
-    return decrypted
+  /**
+   * Get AISourcesConfig with decrypted tokens and API keys
+   */
+  private getDecryptedAiSources(): AISourcesConfig {
+    const aiSources = this.getAiSourcesConfig()
+
+    const decryptedSources = aiSources.sources.map(source => {
+      const decrypted = { ...source }
+
+      if (source.authType === 'api-key' && source.apiKey) {
+        decrypted.apiKey = decryptString(source.apiKey)
+      }
+      if (source.authType === 'oauth') {
+        if (source.accessToken) {
+          decrypted.accessToken = decryptString(source.accessToken)
+        }
+        if (source.refreshToken) {
+          decrypted.refreshToken = decryptString(source.refreshToken)
+        }
+      }
+
+      return decrypted
+    })
+
+    return {
+      ...aiSources,
+      sources: decryptedSources
+    }
   }
 }
 
@@ -521,5 +723,4 @@ export function getAISourceManager(): AISourceManager {
   return managerInstance
 }
 
-// Export class for testing
 export { AISourceManager }

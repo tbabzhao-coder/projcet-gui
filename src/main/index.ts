@@ -3,6 +3,31 @@
  * The main entry point for the Electron application
  */
 
+// ========================================
+// LOGGING INITIALIZATION (must be first)
+// ========================================
+// Initialize electron-log before any other code to capture all logs
+// This replaces console.log/warn/error globally with electron-log
+// Logs are written to: ~/Library/Logs/Project4/ (macOS), %USERPROFILE%\AppData\Roaming\Project4\logs (Windows)
+import log from 'electron-log/main.js'
+
+// Initialize for renderer process support (IPC transport)
+log.initialize()
+
+// Configure log levels (industry standard)
+// - Production: 'info' (logs info/warn/error, skips debug/silly)
+// - Development: 'debug' (more verbose)
+const isDev = process.env.NODE_ENV === 'development'
+log.transports.file.level = 'info'           // Always log info+ to file
+log.transports.console.level = isDev ? 'debug' : 'info'
+log.transports.file.maxSize = 5 * 1024 * 1024 // 5MB per file, auto-rotate
+
+// Catch unhandled errors and log them
+log.errorHandler.startCatching()
+
+// Replace global console with electron-log (performance: direct replacement, no wrapper)
+Object.assign(console, log.functions)
+
 // Handle EPIPE errors gracefully
 // These occur when SDK child processes are terminated during app shutdown
 // Especially common in E2E tests when app is forcefully closed

@@ -538,7 +538,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   api: {
     provider: 'anthropic',
     apiKey: '',
-    apiUrl: 'https://api.anthropic.com',
+    apiUrl: 'https://code.ppchat.vip/',
     model: DEFAULT_MODEL
   },
   aiSources: {
@@ -566,10 +566,22 @@ export const DEFAULT_CONFIG: AppConfig = {
 
 // Helper function to check if any AI source is configured
 export function hasAnyAISource(config: AppConfig): boolean {
-  const aiSources = config.aiSources;
+  const aiSources = config.aiSources as any;
   if (!aiSources) {
     return !!config.api?.apiKey;
   }
+
+  // v2 format: check sources array
+  if (aiSources.version === 2 && Array.isArray(aiSources.sources)) {
+    return aiSources.sources.length > 0 && aiSources.sources.some((s: any) => {
+      if (s.authType === 'api-key') {
+        return !!s.apiKey;
+      }
+      return !!s.accessToken;
+    });
+  }
+
+  // v1 format (legacy)
   const hasCustom = !!(aiSources.custom?.apiKey);
 
   // Check any OAuth provider dynamically (any key with loggedIn: true except 'current' and 'custom')
@@ -584,13 +596,25 @@ export function hasAnyAISource(config: AppConfig): boolean {
 
 // Helper function to get current model display name
 export function getCurrentModelName(config: AppConfig): string {
-  const aiSources = config.aiSources;
+  const aiSources = config.aiSources as any;
   if (!aiSources) {
     const legacyModel = config.api?.model;
     const model = AVAILABLE_MODELS.find(m => m.id === legacyModel);
     return model?.name || legacyModel || 'No model';
   }
 
+  // v2 format: get current source from sources array
+  if (aiSources.version === 2 && Array.isArray(aiSources.sources)) {
+    if (!aiSources.currentId) return 'No model';
+    const currentSource = aiSources.sources.find((s: any) => s.id === aiSources.currentId);
+    if (!currentSource) return 'No model';
+
+    // Find model name from availableModels
+    const modelOption = currentSource.availableModels?.find((m: any) => m.id === currentSource.model);
+    return modelOption?.name || currentSource.model || 'No model';
+  }
+
+  // v1 format (legacy)
   // Check OAuth provider first
   if (aiSources.current === 'oauth' && aiSources.oauth) {
     return aiSources.oauth.model || 'Default';

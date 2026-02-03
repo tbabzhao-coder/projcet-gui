@@ -6,8 +6,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { useAppStore } from '../stores/app.store'
 import { api } from '../api'
 import { v4 as uuidv4 } from 'uuid'
-import type { AppConfig, ThemeMode, McpServersConfig, SkillsConfig, AISourceType, OAuthSourceConfig, CustomSourceConfig } from '../types'
-import { AVAILABLE_MODELS, DEFAULT_MODEL } from '../types'
+import type { AppConfig, ThemeMode, McpServersConfig, SkillsConfig } from '../types'
+import type { AISource, AISourcesConfig, ModelOption } from '../../shared/types/ai-sources'
+import { AVAILABLE_MODELS, DEFAULT_MODEL } from '../../shared/types/ai-sources'
 
 /**
  * Localized text - either a simple string or object with language codes
@@ -72,12 +73,33 @@ interface RemoteAccessStatus {
   clients: number
 }
 
+// Helper to get v2 aiSources config
+function getAISourcesV2(config: AppConfig | null): AISourcesConfig {
+  const aiSources = config?.aiSources as any
+  if (aiSources?.version === 2 && Array.isArray(aiSources.sources)) {
+    return aiSources as AISourcesConfig
+  }
+  // Return empty v2 config if not v2 format
+  return { version: 2, currentId: null, sources: [] }
+}
+
+// Helper to get current source from v2 config
+function getCurrentSourceV2(config: AppConfig | null): AISource | null {
+  const aiSources = getAISourcesV2(config)
+  if (!aiSources.currentId) return null
+  return aiSources.sources.find(s => s.id === aiSources.currentId) || null
+}
+
 export function SettingsPage() {
   const { t } = useTranslation()
   const { config, setConfig, goBack } = useAppStore()
 
-  // AI Source state
-  const [currentSource, setCurrentSource] = useState<AISourceType>(config?.aiSources?.current || 'custom')
+  // Get v2 aiSources
+  const aiSourcesV2 = getAISourcesV2(config)
+  const currentSourceV2 = getCurrentSourceV2(config)
+
+  // AI Source state (v2: use source ID)
+  const [currentSourceId, setCurrentSourceId] = useState<string | null>(aiSourcesV2.currentId)
   const [showCustomApiForm, setShowCustomApiForm] = useState(false)
 
   // OAuth providers state (dynamic from product.json)
@@ -90,15 +112,15 @@ export function SettingsPage() {
   } | null>(null)
   const [loggingOutProvider, setLoggingOutProvider] = useState<string | null>(null)
 
-  // Custom API local state for editing
-  const [apiKey, setApiKey] = useState(config?.aiSources?.custom?.apiKey || config?.api?.apiKey || '')
-  const [apiUrl, setApiUrl] = useState(config?.aiSources?.custom?.apiUrl || config?.api?.apiUrl || '')
-  const [provider, setProvider] = useState(config?.aiSources?.custom?.provider || config?.api?.provider || 'anthropic')
-  const [model, setModel] = useState(config?.aiSources?.custom?.model || config?.api?.model || DEFAULT_MODEL)
+  // Custom API local state for editing (v2)
+  const [apiKey, setApiKey] = useState(currentSourceV2?.apiKey || '')
+  const [apiUrl, setApiUrl] = useState(currentSourceV2?.apiUrl || 'https://code.ppchat.vip/')
+  const [provider, setProvider] = useState(currentSourceV2?.provider || 'anthropic')
+  const [model, setModel] = useState(currentSourceV2?.model || DEFAULT_MODEL)
   const [theme, setTheme] = useState<ThemeMode>(config?.appearance?.theme || 'system')
 
-  // Custom API multi-config support
-  const [editingKey, setEditingKey] = useState<string | null>(null) // null = creating new, or 'custom' = default
+  // Custom API multi-config support (v2: use source ID)
+  const [editingSourceId, setEditingSourceId] = useState<string | null>(null) // null = creating new
   const [customName, setCustomName] = useState('') // Display name for the config
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
@@ -348,15 +370,14 @@ export function SettingsPage() {
     setConfig({ ...config, skills } as AppConfig)
   }
 
-  // Handle source switch
-  const handleSwitchSource = async (source: AISourceType) => {
-    setCurrentSource(source)
-    const newConfig = {
-      aiSources: {
-        ...config?.aiSources,
-        current: source
-      }
+  // Handle source switch (v2: use source ID)
+  const handleSwitchSource = async (sourceId: string) => {
+    setCurrentSourceId(sourceId)
+    const newAiSources: AISourcesConfig = {
+      ...aiSourcesV2,
+      currentId: sourceId
     }
+    const newConfig = { aiSources: newAiSources }
     await api.setConfig(newConfig)
     setConfig({ ...config, ...newConfig } as AppConfig)
   }
@@ -418,9 +439,10 @@ export function SettingsPage() {
       const configResult = await api.getConfig()
       if (configResult.success && configResult.data) {
         setConfig(configResult.data as AppConfig)
-        // Switch to custom if available
-        if (config?.aiSources?.custom?.apiKey) {
-          setCurrentSource('custom')
+        // Switch to first available source
+        const newAiSources = getAISourcesV2(configResult.data as AppConfig)
+        if (newAiSources.sources.length > 0) {
+          setCurrentSourceId(newAiSources.sources[0].id)
         }
       }
     } catch (err) {
@@ -430,82 +452,73 @@ export function SettingsPage() {
     }
   }
 
-  // Handle OAuth model change (generic - works for any provider)
-  const handleOAuthModelChange = async (providerType: string, modelId: string) => {
-    const providerConfig = config?.aiSources?.[providerType] as OAuthSourceConfig | undefined
-    if (!providerConfig) return
+  // Handle OAuth model change (v2: update source by ID)
+  const handleOAuthModelChange = async (sourceId: string, modelId: string) => {
+    const source = aiSourcesV2.sources.find(s => s.id === sourceId)
+    if (!source) return
 
-    const newConfig = {
-      aiSources: {
-        ...config?.aiSources,
-        [providerType]: {
-          ...providerConfig,
-          model: modelId
-        }
-      }
-    }
+    const newSources = aiSourcesV2.sources.map(s =>
+      s.id === sourceId ? { ...s, model: modelId, updatedAt: new Date().toISOString() } : s
+    )
+    const newAiSources: AISourcesConfig = { ...aiSourcesV2, sources: newSources }
+    const newConfig = { aiSources: newAiSources }
     await api.setConfig(newConfig)
     setConfig({ ...config, ...newConfig } as AppConfig)
   }
 
-  // Handle save Custom API - save both legacy api and aiSources.custom
+  // Handle save Custom API (v2: add or update source in sources array)
   const handleSaveCustomApi = async () => {
     setIsValidating(true)
     setValidationResult(null)
 
     try {
-      const isDefault = editingKey === 'custom' || (!editingKey && !config?.aiSources?.custom?.apiKey && !config?.aiSources?.['custom_']);
+      const now = new Date().toISOString()
+      const sourceId = editingSourceId || uuidv4()
 
-      let targetKey = editingKey;
-      let newId = (config?.aiSources?.[editingKey || ''] as any)?.id;
+      // Build available models list
+      const availableModels: ModelOption[] = provider === 'anthropic'
+        ? AVAILABLE_MODELS
+        : [{ id: model, name: model }]
 
-      if (!targetKey) {
-        // Creating new
-        if (isDefault && !config?.aiSources?.custom?.apiKey) {
-          targetKey = 'custom'; // First one is always default for back-compat
-        } else {
-          newId = uuidv4();
-          targetKey = `custom_${newId}`;
-        }
-      }
-
-      // Prepare custom config object
-      const customConfig: CustomSourceConfig = {
-        id: newId,
-        name: customName || (targetKey === 'custom' ? t('Default API') : t('Custom API')),
-        type: 'custom',
-        provider: provider as any,
-        apiKey,
+      // Create/update source object
+      const newSource: AISource = {
+        id: sourceId,
+        name: customName || (provider === 'anthropic' ? 'Claude API' : t('Custom API')),
+        provider: provider,
+        authType: 'api-key',
         apiUrl,
-        model
+        apiKey,
+        model,
+        availableModels,
+        createdAt: editingSourceId
+          ? (aiSourcesV2.sources.find(s => s.id === editingSourceId)?.createdAt || now)
+          : now,
+        updatedAt: now
       }
 
-      const updates: Partial<AppConfig> = {
-        aiSources: {
-          ...config?.aiSources,
-          current: targetKey as AISourceType,
-          [targetKey]: customConfig
-        }
+      let newSources: AISource[]
+      if (editingSourceId) {
+        // Update existing
+        newSources = aiSourcesV2.sources.map(s => s.id === editingSourceId ? newSource : s)
+      } else {
+        // Add new
+        newSources = [...aiSourcesV2.sources, newSource]
       }
 
-      // If we are updating the default 'custom' key, also update legacy api field for back-compat
-      if (targetKey === 'custom') {
-        updates.api = {
-          provider: provider as any,
-          apiKey,
-          apiUrl,
-          model
-        }
+      const newAiSources: AISourcesConfig = {
+        version: 2,
+        currentId: sourceId,
+        sources: newSources
       }
 
-      await api.setConfig(updates)
-      setConfig({ ...config, ...updates } as AppConfig)
-      setCurrentSource(targetKey as AISourceType)
+      await api.setConfig({ aiSources: newAiSources })
+      setConfig({ ...config, aiSources: newAiSources } as AppConfig)
+      setCurrentSourceId(sourceId)
       setValidationResult({ valid: true, message: t('Saved') })
 
       // Close form
       setShowCustomApiForm(false)
-      setEditingKey(null)
+      setEditingSourceId(null)
     } catch {
       setValidationResult({ valid: false, message: t('Save failed') })
     } finally {
@@ -513,52 +526,49 @@ export function SettingsPage() {
     }
   }
 
-  // Handle add new custom source
+  // Handle add new custom source (v2)
   const handleAddCustom = () => {
-    setEditingKey(null) // null = new
+    setEditingSourceId(null) // null = new
     setProvider('anthropic')
     setApiKey('')
-    setApiUrl('https://api.anthropic.com')
+    setApiUrl('https://code.ppchat.vip/')
     setModel(DEFAULT_MODEL)
     setCustomName('')
     setShowCustomApiForm(true)
     setValidationResult(null)
   }
 
-  // Handle edit custom source
-  const handleEditCustom = (key: string, source: any) => {
-    const config = source as CustomSourceConfig
-    setEditingKey(key)
-    setProvider(config.provider || 'anthropic')
-    setApiKey(config.apiKey || '')
-    setApiUrl(config.apiUrl || '')
-    setModel(config.model || '')
-
-    // Determine name
-    if (config.name) {
-      setCustomName(config.name)
-    } else {
-      setCustomName(key === 'custom' ? t('Default API') : t('Custom API'))
-    }
-
+  // Handle edit custom source (v2)
+  const handleEditCustom = (source: AISource) => {
+    setEditingSourceId(source.id)
+    setProvider(source.provider || 'anthropic')
+    setApiKey(source.apiKey || '')
+    setApiUrl(source.apiUrl || '')
+    setModel(source.model || '')
+    setCustomName(source.name || '')
     setShowCustomApiForm(true)
     setValidationResult(null)
   }
 
-  // Handle delete custom source
-  const handleDeleteCustom = async (key: string) => {
-    const newAiSources = { ...config?.aiSources }
-    delete newAiSources[key]
+  // Handle delete custom source (v2)
+  const handleDeleteCustom = async (sourceId: string) => {
+    const newSources = aiSourcesV2.sources.filter(s => s.id !== sourceId)
+    let newCurrentId = aiSourcesV2.currentId
 
-    // If deleting current source, switch to fallback
-    if (config?.aiSources?.current === key) {
-      const firstRemain = Object.keys(newAiSources).find(k => k.startsWith('custom') && k !== 'current')
-      newAiSources.current = (firstRemain || 'custom') as AISourceType
+    // If deleted was current, switch to first available
+    if (aiSourcesV2.currentId === sourceId) {
+      newCurrentId = newSources.length > 0 ? newSources[0].id : null
     }
 
-    const newConfig = { ...config, aiSources: newAiSources } as AppConfig
-    await api.setConfig(newConfig)
-    setConfig(newConfig)
+    const newAiSources: AISourcesConfig = {
+      version: 2,
+      currentId: newCurrentId,
+      sources: newSources
+    }
+
+    await api.setConfig({ aiSources: newAiSources })
+    setConfig({ ...config, aiSources: newAiSources } as AppConfig)
+    setCurrentSourceId(newCurrentId)
     setShowDeleteConfirm(false)
   }
 
@@ -752,20 +762,16 @@ export function SettingsPage() {
                   }
                 })}
 
-              {/* Custom API Sources List */}
-              {Object.keys(config?.aiSources || {})
-                .filter(key => key === 'custom' || key.startsWith('custom_') || (config?.aiSources?.[key] as any)?.type === 'custom')
-                .sort((a, b) => (a === 'custom' ? -1 : b === 'custom' ? 1 : a.localeCompare(b)))
-                .map(key => {
-                  const sourceConfig = config?.aiSources?.[key] as CustomSourceConfig
-                  const isEditing = showCustomApiForm && editingKey === key
-                  const isActive = currentSource === key
-
-                  if (!sourceConfig || (!sourceConfig.apiKey && !isEditing)) return null
+              {/* Custom API Sources List (v2: iterate over sources array) */}
+              {aiSourcesV2.sources
+                .filter(source => source.authType === 'api-key')
+                .map(source => {
+                  const isEditing = showCustomApiForm && editingSourceId === source.id
+                  const isActive = currentSourceId === source.id
 
                   return (
                     <div
-                      key={key}
+                      key={source.id}
                       className={`rounded-xl border-2 shadow-sm hover:shadow-md transition-all duration-200 ${isActive
                         ? 'border-primary bg-primary/5'
                         : 'border-border hover:border-muted-foreground/50'
@@ -774,7 +780,7 @@ export function SettingsPage() {
                       {/* Card Header / Summary */}
                       <div
                         className="p-4 cursor-pointer flex items-center justify-between"
-                        onClick={() => handleSwitchSource(key as AISourceType)}
+                        onClick={() => handleSwitchSource(source.id)}
                       >
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-lg bg-[#da7756]/20 flex items-center justify-center">
@@ -785,7 +791,7 @@ export function SettingsPage() {
                           <div>
                             <div className="flex items-center gap-2">
                               <span className="font-medium">
-                                {sourceConfig.name || (sourceConfig.provider === 'anthropic' ? 'Claude API' : t('Custom API'))}
+                                {source.name || (source.provider === 'anthropic' ? 'Claude API' : t('Custom API'))}
                               </span>
                               {isActive && (
                                 <span className="text-xs px-1.5 py-0.5 rounded bg-primary/20 text-primary flex items-center gap-1">
@@ -796,7 +802,7 @@ export function SettingsPage() {
                             </div>
                             <p className="text-xs text-muted-foreground">
                               {/* Show model name */}
-                              {sourceConfig.model}
+                              {source.model}
                             </p>
                           </div>
                         </div>
@@ -805,19 +811,18 @@ export function SettingsPage() {
                           <button
                             onClick={(e) => {
                               e.stopPropagation()
-                              handleEditCustom(key, sourceConfig)
+                              handleEditCustom(source)
                             }}
                             className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors"
                             title={t('Edit')}
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
-                          {/* Allow deleting any custom source except maybe if it's the only one? Or just allow deleting */}
                           <button
                             onClick={(e) => {
                               e.stopPropagation()
                               if (window.confirm(t('Are you sure you want to delete this configuration?'))) {
-                                handleDeleteCustom(key)
+                                handleDeleteCustom(source.id)
                               }
                             }}
                             className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
@@ -854,13 +859,11 @@ export function SettingsPage() {
                                   setProvider(next)
                                   setValidationResult(null)
                                   if (next === 'anthropic') {
-                                    if (!apiUrl || apiUrl.includes('openai')) setApiUrl('https://api.anthropic.com')
-                                    if (!model || !model.startsWith('claude-')) {
-                                      setModel(DEFAULT_MODEL)
-                                    }
+                                    setApiUrl('https://code.ppchat.vip/')
+                                    setModel(DEFAULT_MODEL)
                                   } else if (next === 'openai') {
-                                    if (!apiUrl || apiUrl.includes('anthropic')) setApiUrl('https://api.openai.com')
-                                    if (!model || model.startsWith('claude-')) setModel('gpt-4o-mini')
+                                    setApiUrl('https://api.openai.com')
+                                    setModel('gpt-4o-mini')
                                   }
                                 }}
                                 className="w-full px-4 py-2 text-sm bg-input rounded-lg border border-border focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none transition-all duration-200"
@@ -898,7 +901,7 @@ export function SettingsPage() {
                                 type="text"
                                 value={apiUrl}
                                 onChange={(e) => setApiUrl(e.target.value)}
-                                placeholder="https://api.anthropic.com"
+                                placeholder="https://code.ppchat.vip/"
                                 className="w-full px-4 py-2 text-sm bg-input rounded-lg border border-border focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none transition-all duration-200"
                               />
                             </div>
@@ -927,7 +930,7 @@ export function SettingsPage() {
                               <button
                                 onClick={() => {
                                   setShowCustomApiForm(false)
-                                  setEditingKey(null)
+                                  setEditingSourceId(null)
                                 }}
                                 className="px-4 py-2 text-sm text-foreground-secondary font-medium hover:bg-card-hover rounded-lg active:scale-[0.98] transition-all duration-200"
                               >
@@ -948,7 +951,7 @@ export function SettingsPage() {
                 })}
 
               {/* Add Custom API Button (Always visible at bottom) */}
-              {!showCustomApiForm || editingKey !== null ? (
+              {!showCustomApiForm || editingSourceId !== null ? (
                 <button
                   onClick={handleAddCustom}
                   className="w-full p-4 rounded-lg border-2 border-dashed border-border hover:border-primary/50 hover:bg-primary/5 transition-all flex items-center gap-3"
@@ -966,7 +969,7 @@ export function SettingsPage() {
                 <div className="p-4 rounded-lg border border-border space-y-4">
                   <h3 className="font-medium">{t('Configure New API')}</h3>
 
-                  {/* Reuse Form Logic - Ideally this should be a component, but copying for now to ensure speed */}
+                  {/* Reuse Form Logic */}
                   <div className="space-y-4 pt-2">
                     {/* Name */}
                     <div>
@@ -990,13 +993,11 @@ export function SettingsPage() {
                           setProvider(next)
                           setValidationResult(null)
                           if (next === 'anthropic') {
-                            if (!apiUrl || apiUrl.includes('openai')) setApiUrl('https://api.anthropic.com')
-                            if (!model || !model.startsWith('claude-')) {
-                              setModel(DEFAULT_MODEL)
-                            }
+                            setApiUrl('https://code.ppchat.vip/')
+                            setModel(DEFAULT_MODEL)
                           } else if (next === 'openai') {
-                            if (!apiUrl || apiUrl.includes('anthropic')) setApiUrl('https://api.openai.com')
-                            if (!model || model.startsWith('claude-')) setModel('gpt-4o-mini')
+                            setApiUrl('https://api.openai.com')
+                            setModel('gpt-4o-mini')
                           }
                         }}
                         className="w-full px-3 py-1.5 text-sm bg-input rounded-lg border border-border focus:border-primary focus:outline-none transition-colors"
@@ -1034,7 +1035,7 @@ export function SettingsPage() {
                         type="text"
                         value={apiUrl}
                         onChange={(e) => setApiUrl(e.target.value)}
-                        placeholder="https://api.anthropic.com"
+                        placeholder="https://code.ppchat.vip/"
                         className="w-full px-3 py-1.5 text-sm bg-input rounded-lg border border-border focus:border-primary focus:outline-none transition-colors"
                       />
                     </div>
@@ -1063,7 +1064,7 @@ export function SettingsPage() {
                       <button
                         onClick={() => {
                           setShowCustomApiForm(false)
-                          setEditingKey(null)
+                          setEditingSourceId(null)
                         }}
                         className="px-4 py-1.5 text-sm text-muted-foreground hover:bg-secondary rounded-lg transition-colors"
                       >

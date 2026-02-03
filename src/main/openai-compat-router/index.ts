@@ -85,6 +85,7 @@ export {
   decodeBackendConfig,
   // URL helpers
   extractBaseUrl,
+  normalizeApiUrl,
   // ID generation
   generateId,
   generateMessageId,

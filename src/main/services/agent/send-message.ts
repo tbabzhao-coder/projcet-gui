@@ -496,12 +496,12 @@ async function processMessageStream(
       if (event.type === 'message_start') {
         console.log(`[Agent][${conversationId}] 🔴 +${elapsed}ms message_start FULL:`, JSON.stringify(event))
       } else {
-        console.log(`[Agent][${conversationId}] 🔴 +${elapsed}ms stream_event:`, JSON.stringify({
-          type: event.type,
-          index: event.index,
-          content_block: event.content_block,
-          delta: event.delta
-        }))
+        // console.log(`[Agent][${conversationId}] 🔴 +${elapsed}ms stream_event:`, JSON.stringify({
+        //   type: event.type,
+        //   index: event.index,
+        //   content_block: event.content_block,
+        //   delta: event.delta
+        // }))
       }
 
       // Text block started

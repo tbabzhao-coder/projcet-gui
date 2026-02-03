@@ -1,5 +1,5 @@
 /**
- * AI Sources - Unified Type Definitions
+ * AI Sources - Unified Type Definitions (v2)
  *
  * This module defines all types related to AI source providers.
  * These types are shared between main process and renderer.
@@ -8,28 +8,65 @@
  * - Single source of truth for all AI-related types
  * - Extensible for future providers
  * - Minimal coupling with specific provider implementations
+ * - All sources use unified AISource structure
+ *
+ * Version History:
+ * - v1: Separate custom/oauth configs with dynamic keys
+ * - v2: Unified AISource array structure (current)
  */
+
+import { v4 as uuidv4 } from 'uuid'
 
 // ============================================================================
 // Core Enums and Constants
 // ============================================================================
 
 /**
- * Available AI Source Types
- * 'oauth' - OAuth-based providers 
- * 'custom' - User's own API key
+ * Authentication method type
  */
-export type AISourceType = 'oauth' | 'custom' | string
+export type AuthType = 'api-key' | 'oauth'
 
 /**
- * Provider types for custom API
+ * Built-in provider IDs
+ * - anthropic: Anthropic Claude API (supports custom URL for proxies)
+ * - openai: OpenAI Compatible API (supports any OpenAI-compatible endpoint)
+ * - deepseek: DeepSeek API
+ * - github-copilot: GitHub Copilot OAuth
  */
-export type ApiProvider = 'anthropic' | 'openai'
+export type BuiltinProviderId =
+  | 'anthropic'
+  | 'openai'
+  | 'deepseek'
+  | 'siliconflow'
+  | 'aliyun'
+  | 'moonshot'
+  | 'zhipu'
+  | 'minimax'
+  | 'yi'
+  | 'stepfun'
+  | 'openrouter'
+  | 'groq'
+  | 'mistral'
+  | 'deepinfra'
+  | 'together'
+  | 'fireworks'
+  | 'xai'
+  | 'github-copilot'
+
+/**
+ * Provider ID (built-in + future extensions)
+ */
+export type ProviderId = BuiltinProviderId | string
 
 /**
  * Login status for OAuth-based sources
  */
 export type LoginStatus = 'idle' | 'starting' | 'waiting' | 'completing' | 'success' | 'error'
+
+/**
+ * Legacy API Provider type (for backward compatibility)
+ */
+export type ApiProvider = 'anthropic' | 'openai'
 
 // ============================================================================
 // Model Definitions
@@ -41,11 +78,11 @@ export type LoginStatus = 'idle' | 'starting' | 'waiting' | 'completing' | 'succ
 export interface ModelOption {
   id: string
   name: string
-  description: string
+  description?: string
 }
 
 /**
- * Available Claude models
+ * Available Claude models (legacy, for backward compatibility)
  */
 export const AVAILABLE_MODELS: ModelOption[] = [
   {
@@ -68,13 +105,13 @@ export const AVAILABLE_MODELS: ModelOption[] = [
 export const DEFAULT_MODEL = 'claude-opus-4-5-20251101'
 
 // ============================================================================
-// Provider Configuration Types
+// AI Source Configuration Types (v2)
 // ============================================================================
 
 /**
  * User info from OAuth provider
  */
-export interface AISourceUserInfo {
+export interface AISourceUser {
   name: string
   avatar?: string
   /** User ID (for API headers, should be ASCII-safe) */
@@ -82,37 +119,90 @@ export interface AISourceUserInfo {
 }
 
 /**
- * Base configuration that all sources share
+ * AI Source - Unified configuration for all sources
+ * Both API Key and OAuth sources use this same structure
  */
-export interface AISourceBaseConfig {
+export interface AISource {
+  // ===== Basic Info (Required) =====
+  /** Unique identifier, UUID format */
+  id: string
+  /** Display name, user-defined */
+  name: string
+  /** Provider ID (e.g., 'anthropic', 'deepseek', 'custom') */
+  provider: ProviderId
+  /** Authentication method */
+  authType: AuthType
+
+  // ===== API Configuration (Required) =====
+  /** API endpoint URL (base URL, e.g., https://api.openai.com/v1) */
+  apiUrl: string
+  /** API type for OpenAI compatible providers (default: chat_completions) */
+  apiType?: 'chat_completions' | 'responses'
+
+  // ===== Authentication Credentials (Based on authType) =====
+  /** API Key (for authType = 'api-key') */
+  apiKey?: string
+
+  /** OAuth Access Token (for authType = 'oauth') */
+  accessToken?: string
+  /** OAuth Refresh Token */
+  refreshToken?: string
+  /** Token expiration timestamp (Unix ms) */
+  tokenExpires?: number
+  /** OAuth user info */
+  user?: AISourceUser
+
+  // ===== Model Configuration (Required) =====
+  /** Currently selected model ID */
   model: string
+  /** Available models list (at least one required) */
+  availableModels: ModelOption[]
+
+  // ===== Metadata (Required) =====
+  /** Creation timestamp (ISO 8601) */
+  createdAt: string
+  /** Last update timestamp (ISO 8601) */
+  updatedAt: string
 }
 
 /**
- * OAuth source configuration (generic for any OAuth provider)
- * Stored securely, only essential data exposed to renderer
+ * AI Sources configuration (stored in config.json)
  */
-export interface OAuthSourceConfig extends AISourceBaseConfig {
+export interface AISourcesConfig {
+  /** Schema version, currently 2 */
+  version: 2
+  /** Currently active source ID, null if not configured */
+  currentId: string | null
+  /** All configured sources */
+  sources: AISource[]
+}
+
+// ============================================================================
+// Legacy Types (For Backward Compatibility and Migration)
+// ============================================================================
+
+/**
+ * Legacy OAuth source configuration (v1)
+ */
+export interface OAuthSourceConfig {
   loggedIn: boolean
-  user?: AISourceUserInfo
+  user?: AISourceUser
+  model: string
   availableModels: string[]
-  /** Model ID to display name mapping (provided by provider) */
   modelNames?: Record<string, string>
-  // Provider-specific token data - managed by main process
-  // Field names are generic; actual data populated by provider
   accessToken?: string
   refreshToken?: string
   tokenExpires?: number
 }
 
 /**
- * Custom API source configuration
+ * Legacy Custom API source configuration (v1)
  */
-export interface CustomSourceConfig extends AISourceBaseConfig {
+export interface CustomSourceConfig {
   provider: ApiProvider
   apiKey: string
   apiUrl: string
-  // Optional fields for multiple custom sources
+  model: string
   id?: string
   name?: string
   type?: 'custom'
@@ -120,14 +210,13 @@ export interface CustomSourceConfig extends AISourceBaseConfig {
 }
 
 /**
- * Combined AI Sources configuration
+ * Legacy AI Sources configuration (v1)
  */
-export interface AISourcesConfig {
-  current: AISourceType
+export interface LegacyAISourcesConfig {
+  current: string
   oauth?: OAuthSourceConfig
   custom?: CustomSourceConfig
-  // Dynamic provider configs (keyed by provider type)
-  [key: string]: AISourceType | OAuthSourceConfig | CustomSourceConfig | undefined
+  [key: string]: string | OAuthSourceConfig | CustomSourceConfig | undefined
 }
 
 // ============================================================================
@@ -145,6 +234,7 @@ export interface BackendRequestConfig {
   headers?: Record<string, string>
   apiType?: 'chat_completions' | 'responses'
   forceStream?: boolean
+  filterContent?: boolean
 }
 
 // ============================================================================
@@ -177,7 +267,7 @@ export interface OAuthStartResult {
  */
 export interface OAuthCompleteResult {
   success: boolean
-  user?: AISourceUserInfo
+  user?: AISourceUser
   error?: string
 }
 
@@ -186,66 +276,175 @@ export interface OAuthCompleteResult {
 // ============================================================================
 
 /**
+ * Create empty AI Sources config
+ */
+export function createEmptyAISourcesConfig(): AISourcesConfig {
+  return {
+    version: 2,
+    currentId: null,
+    sources: []
+  }
+}
+
+/**
+ * Get current active source
+ */
+export function getCurrentSource(config: AISourcesConfig): AISource | null {
+  if (!config.currentId) return null
+  return config.sources.find(s => s.id === config.currentId) || null
+}
+
+/**
+ * Get source by ID
+ */
+export function getSourceById(config: AISourcesConfig, id: string): AISource | null {
+  return config.sources.find(s => s.id === id) || null
+}
+
+/**
+ * Get current model display name
+ */
+export function getCurrentModelName(config: AISourcesConfig): string {
+  const source = getCurrentSource(config)
+  if (!source) return 'No model'
+
+  const modelOption = source.availableModels.find(m => m.id === source.model)
+  return modelOption?.name || source.model
+}
+
+/**
  * Check if any AI source is configured and ready to use
  */
-export function hasAnyAISource(aiSources: AISourcesConfig): boolean {
-  const hasCustom = !!(aiSources.custom?.apiKey)
-
-  // Check any OAuth provider dynamically (any key with loggedIn: true except 'current' and 'custom')
-  const hasOAuth = Object.keys(aiSources).some(key => {
-    if (key === 'current' || key === 'custom') return false
-    const source = aiSources[key as keyof typeof aiSources] as OAuthSourceConfig | undefined
-    return source?.loggedIn === true
+export function hasAnyAISource(config: AISourcesConfig): boolean {
+  return config.sources.length > 0 && config.sources.some(s => {
+    if (s.authType === 'api-key') {
+      return !!s.apiKey
+    }
+    return !!s.accessToken
   })
-
-  return hasOAuth || hasCustom
 }
 
 /**
  * Check if a specific source is configured
  */
-export function isSourceConfigured(aiSources: AISourcesConfig, source: AISourceType): boolean {
-  if (source === 'custom') {
-    return !!(aiSources.custom?.apiKey)
+export function isSourceConfigured(source: AISource): boolean {
+  if (source.authType === 'api-key') {
+    return !!source.apiKey
   }
-  // Check dynamic provider (OAuth providers like 'google', etc.)
-  const config = aiSources[source]
-  if (config && typeof config === 'object' && 'loggedIn' in config) {
-    return config.loggedIn === true
-  }
-  return false
+  return !!source.accessToken
 }
 
 /**
- * Get display name for current model
+ * Create a new AI Source
  */
-export function getCurrentModelName(aiSources: AISourcesConfig): string {
-  if (aiSources.current === 'custom' && aiSources.custom) {
-    const model = AVAILABLE_MODELS.find(m => m.id === aiSources.custom?.model)
-    return model?.name || aiSources.custom.model
+export function createSource(params: {
+  name: string
+  provider: ProviderId
+  authType: AuthType
+  apiUrl: string
+  apiKey?: string
+  accessToken?: string
+  refreshToken?: string
+  tokenExpires?: number
+  user?: AISourceUser
+  model: string
+  availableModels: ModelOption[]
+}): AISource {
+  const now = new Date().toISOString()
+  return {
+    id: uuidv4(),
+    name: params.name,
+    provider: params.provider,
+    authType: params.authType,
+    apiUrl: params.apiUrl,
+    apiKey: params.apiKey,
+    accessToken: params.accessToken,
+    refreshToken: params.refreshToken,
+    tokenExpires: params.tokenExpires,
+    user: params.user,
+    model: params.model,
+    availableModels: params.availableModels,
+    createdAt: now,
+    updatedAt: now
   }
-  // For OAuth or dynamic providers
-  const currentConfig = aiSources[aiSources.current] as OAuthSourceConfig | undefined
-  if (currentConfig && typeof currentConfig === 'object' && 'model' in currentConfig) {
-    const modelId = currentConfig.model
-    // Use modelNames mapping if available
-    return currentConfig.modelNames?.[modelId] || modelId || 'No model'
+}
+
+/**
+ * Add source to config
+ */
+export function addSource(config: AISourcesConfig, source: AISource): AISourcesConfig {
+  return {
+    ...config,
+    sources: [...config.sources, source],
+    // Auto-select if no current source
+    currentId: config.currentId || source.id
   }
-  return 'No model'
+}
+
+/**
+ * Update a source
+ */
+export function updateSource(
+  config: AISourcesConfig,
+  id: string,
+  updates: Partial<AISource>
+): AISourcesConfig {
+  return {
+    ...config,
+    sources: config.sources.map(s =>
+      s.id === id
+        ? { ...s, ...updates, updatedAt: new Date().toISOString() }
+        : s
+    )
+  }
+}
+
+/**
+ * Delete a source
+ */
+export function deleteSource(config: AISourcesConfig, id: string): AISourcesConfig {
+  const newSources = config.sources.filter(s => s.id !== id)
+  let newCurrentId = config.currentId
+
+  // If deleted was current, switch to first available
+  if (config.currentId === id) {
+    newCurrentId = newSources.length > 0 ? newSources[0].id : null
+  }
+
+  return {
+    ...config,
+    sources: newSources,
+    currentId: newCurrentId
+  }
+}
+
+/**
+ * Set current source
+ */
+export function setCurrentSource(config: AISourcesConfig, id: string): AISourcesConfig {
+  if (!config.sources.some(s => s.id === id)) {
+    return config // ID doesn't exist
+  }
+  return { ...config, currentId: id }
+}
+
+/**
+ * Set model for current source
+ */
+export function setCurrentModel(config: AISourcesConfig, modelId: string): AISourcesConfig {
+  if (!config.currentId) return config
+  return updateSource(config, config.currentId, { model: modelId })
 }
 
 /**
  * Get available models for a source
  */
-export function getAvailableModels(aiSources: AISourcesConfig, source: AISourceType): string[] {
-  if (source === 'custom') {
-    return AVAILABLE_MODELS.map(m => m.id)
-  }
-  // For OAuth or dynamic providers
-  const config = aiSources[source]
-  if (config && typeof config === 'object' && 'availableModels' in config) {
-    return config.availableModels || []
-  }
-  return []
+export function getAvailableModels(source: AISource): ModelOption[] {
+  return source.availableModels || []
 }
 
+/**
+ * Backward compatibility alias
+ */
+export type AISourceType = string
+export type AISourceUserInfo = AISourceUser

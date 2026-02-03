@@ -12,12 +12,11 @@ import { ChevronDown, Plus, Sparkles, X, Check } from 'lucide-react'
 import { useAppStore } from '../../stores/app.store'
 import { api } from '../../api'
 import {
-  AVAILABLE_MODELS,
   getCurrentModelName,
-  type AppConfig,
-  type AISourceType,
-  type OAuthSourceConfig
+  type AppConfig
 } from '../../types'
+import type { AISource, AISourcesConfig, ModelOption } from '../../../shared/types/ai-sources'
+import { AVAILABLE_MODELS } from '../../../shared/types/ai-sources'
 import { useTranslation, getCurrentLanguage } from '../../i18n'
 import { useIsMobile } from '../../hooks/useIsMobile'
 
@@ -44,6 +43,16 @@ function getLocalizedText(value: LocalizedText): string {
   return value[lang] || value['en'] || Object.values(value)[0] || ''
 }
 
+// Helper to get v2 aiSources config
+function getAISourcesV2(config: AppConfig | null): AISourcesConfig {
+  const aiSources = config?.aiSources as any
+  if (aiSources?.version === 2 && Array.isArray(aiSources.sources)) {
+    return aiSources as AISourcesConfig
+  }
+  // Return empty v2 config if not v2 format
+  return { version: 2, currentId: null, sources: [] }
+}
+
 export function ModelSelector() {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
@@ -52,6 +61,10 @@ export function ModelSelector() {
   const [isAnimatingOut, setIsAnimatingOut] = useState(false)
   const [authProviders, setAuthProviders] = useState<AuthProviderConfig[]>([])
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const [dropdownPosition, setDropdownPosition] = useState<{ top: number; right: number }>({ top: 0, right: 0 })
+
+  // Get v2 aiSources
+  const aiSourcesV2 = getAISourcesV2(config)
 
   // Load auth providers from config
   useEffect(() => {
@@ -68,9 +81,20 @@ export function ModelSelector() {
   // Initialize expanded section to current source when opening
   useEffect(() => {
     if (isOpen) {
-      setExpandedSection(config?.aiSources?.current || null)
+      setExpandedSection(aiSourcesV2.currentId || null)
     }
-  }, [isOpen, config?.aiSources?.current])
+  }, [isOpen, aiSourcesV2.currentId])
+
+  // Calculate dropdown position when opening
+  useEffect(() => {
+    if (isOpen && !isMobile && dropdownRef.current) {
+      const rect = dropdownRef.current.getBoundingClientRect()
+      setDropdownPosition({
+        top: rect.bottom + 4,
+        right: window.innerWidth - rect.right
+      })
+    }
+  }, [isOpen, isMobile])
 
   const toggleSection = (sectionKey: string, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -126,89 +150,38 @@ export function ModelSelector() {
 
   if (!config) return null
 
-  const aiSources = config.aiSources || { current: 'custom' as AISourceType }
-
-  const currentSource = aiSources.current
-  const hasCustom = !!(aiSources.custom?.apiKey)
-  const isCustomAnthropic = aiSources.custom?.provider === 'anthropic'
-
-  // Get logged-in OAuth providers dynamically
-  const loggedInOAuthProviders = authProviders
-    .filter(p => p.type !== 'custom' && p.enabled)
-    .map(p => {
-      const providerConfig = aiSources[p.type] as OAuthSourceConfig | undefined
-      return {
-        type: p.type,
-        displayName: getLocalizedText(p.displayName),
-        config: providerConfig,
-        isLoggedIn: providerConfig?.loggedIn === true
-      }
-    })
-    .filter(p => p.isLoggedIn)
-
   // Get current model display name
   const currentModelName = getCurrentModelName(config)
 
-  // Handle model selection for any provider
-  const handleSelectModel = async (source: AISourceType, modelId: string) => {
-    const newAiSources = {
-      ...aiSources,
-      current: source
+  // Handle model selection (v2)
+  const handleSelectModel = async (sourceId: string, modelId: string) => {
+    const newSources = aiSourcesV2.sources.map(s =>
+      s.id === sourceId ? { ...s, model: modelId, updatedAt: new Date().toISOString() } : s
+    )
+    const newAiSources: AISourcesConfig = {
+      version: 2,
+      currentId: sourceId,
+      sources: newSources
     }
 
-    // Get current provider config
-    const providerConfig = aiSources[source] as OAuthSourceConfig | undefined
-
-    if (source === 'custom' && aiSources.custom) {
-      newAiSources.custom = {
-        ...aiSources.custom,
-        model: modelId
-      }
-      // Also update legacy api field
-      ;(config as any).api = {
-        ...config.api,
-        model: modelId
-      }
-    } else if (source.startsWith('custom_')) {
-      // Multi custom sources
-      newAiSources[source] = {
-        ...(aiSources[source] as any),
-        model: modelId
-      }
-    } else if (providerConfig) {
-      // OAuth provider - update dynamically
-      newAiSources[source] = {
-        ...providerConfig,
-        model: modelId
-      }
-    }
-
-    const newConfig = {
-      ...config,
-      aiSources: newAiSources
-    }
-
+    const newConfig = { ...config, aiSources: newAiSources }
     await api.setConfig(newConfig)
     setConfig(newConfig as AppConfig)
     handleClose()
   }
 
-  // Handle switching source only (keeps last selected model for that source)
-  const handleSwitchSource = async (source: AISourceType, e: React.MouseEvent) => {
+  // Handle switching source only (v2)
+  const handleSwitchSource = async (sourceId: string, e: React.MouseEvent) => {
     e.stopPropagation()
 
-    if (aiSources.current === source) return
+    if (aiSourcesV2.currentId === sourceId) return
 
-    const newAiSources = {
-      ...aiSources,
-      current: source
+    const newAiSources: AISourcesConfig = {
+      ...aiSourcesV2,
+      currentId: sourceId
     }
 
-    const newConfig = {
-      ...config,
-      aiSources: newAiSources
-    }
-
+    const newConfig = { ...config, aiSources: newAiSources }
     await api.setConfig(newConfig)
     setConfig(newConfig as AppConfig)
     handleClose()
@@ -220,27 +193,23 @@ export function ModelSelector() {
     setView('settings')
   }
 
-  // Shared model list content with accordion support
+  // Shared model list content (v2)
   const renderModelList = () => (
     <>
-      {/* Custom API Sections - Iterate all custom sources */}
-      {Object.keys(aiSources)
-        .filter(key => key === 'custom' || key.startsWith('custom_') || (aiSources[key] as any)?.type === 'custom')
-        .sort((a, b) => (a === 'custom' ? -1 : b === 'custom' ? 1 : a.localeCompare(b)))
-        .map(key => {
-          const sourceConfig = aiSources[key] as any
-          if (!sourceConfig || !sourceConfig.apiKey) return null
-
-          const isAnthropic = sourceConfig.provider === 'anthropic'
-          const groupName = sourceConfig.name || (isAnthropic ? 'Claude API' : t('Custom API'))
-          const isExpanded = expandedSection === key
-          const isActiveSource = currentSource === key
+      {/* API Key Sources (v2) */}
+      {aiSourcesV2.sources
+        .filter(source => source.authType === 'api-key')
+        .map(source => {
+          const isExpanded = expandedSection === source.id
+          const isActiveSource = aiSourcesV2.currentId === source.id
+          const isAnthropic = source.provider === 'anthropic'
+          const groupName = source.name || (isAnthropic ? 'Claude API' : t('Custom API'))
 
           return (
-            <div key={key}>
+            <div key={source.id}>
               <div
                 className={`px-3 py-2 text-xs font-medium flex items-center justify-between cursor-pointer hover:bg-secondary/50 transition-colors ${isActiveSource ? 'text-primary' : 'text-muted-foreground'}`}
-                onClick={(e) => toggleSection(key, e)}
+                onClick={(e) => toggleSection(source.id, e)}
               >
                 <div className="flex items-center gap-2">
                   <ChevronDown className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
@@ -251,19 +220,10 @@ export function ModelSelector() {
                     <span className="w-2.5 h-2.5 rounded-full bg-primary" title={t('Active')} />
                   ) : (
                     <button
-                      onClick={(e) => handleSwitchSource(key as AISourceType, e)}
+                      onClick={(e) => handleSwitchSource(source.id, e)}
                       className="w-2.5 h-2.5 rounded-full border border-muted-foreground hover:border-primary hover:bg-primary/20 transition-colors"
                       title={t('Switch to this source')}
                     />
-                  )}
-                  {key === 'custom' && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleAddSource() }}
-                      className="text-xs text-muted-foreground hover:text-foreground p-0.5 ml-1"
-                      title={t('Add source')}
-                    >
-                      <Plus className="w-3 h-3" />
-                    </button>
                   )}
                 </div>
               </div>
@@ -274,32 +234,32 @@ export function ModelSelector() {
                     AVAILABLE_MODELS.map((model) => (
                       <button
                         key={model.id}
-                        onClick={() => handleSelectModel(key as AISourceType, model.id)}
+                        onClick={() => handleSelectModel(source.id, model.id)}
                         className={`w-full px-3 py-3 text-left text-sm hover:bg-secondary/80 transition-colors flex items-center gap-2 pl-8 ${
-                          isActiveSource && sourceConfig.model === model.id
+                          isActiveSource && source.model === model.id
                             ? 'text-primary'
                             : 'text-foreground'
                         }`}
                       >
-                        {isActiveSource && sourceConfig.model === model.id ? <Check className="w-3 h-3" /> : <span className="w-3" />}
+                        {isActiveSource && source.model === model.id ? <Check className="w-3 h-3" /> : <span className="w-3" />}
                         {model.name}
                       </button>
                     ))
                   ) : (
                     <>
-                      {(sourceConfig.availableModels && sourceConfig.availableModels.length > 0) ? (
-                        sourceConfig.availableModels.map((modelId: string) => (
+                      {(source.availableModels && source.availableModels.length > 0) ? (
+                        source.availableModels.map((modelOption: ModelOption) => (
                           <button
-                            key={modelId}
-                            onClick={() => handleSelectModel(key as AISourceType, modelId)}
+                            key={modelOption.id}
+                            onClick={() => handleSelectModel(source.id, modelOption.id)}
                             className={`w-full px-3 py-3 text-left text-sm hover:bg-secondary/80 transition-colors flex items-center gap-2 pl-8 ${
-                              isActiveSource && sourceConfig.model === modelId
+                              isActiveSource && source.model === modelOption.id
                                 ? 'text-primary'
                                 : 'text-foreground'
                             }`}
                           >
-                            {isActiveSource && sourceConfig.model === modelId ? <Check className="w-3 h-3" /> : <span className="w-3" />}
-                            {modelId}
+                            {isActiveSource && source.model === modelOption.id ? <Check className="w-3 h-3" /> : <span className="w-3" />}
+                            {modelOption.name || modelOption.id}
                           </button>
                         ))
                       ) : (
@@ -308,7 +268,7 @@ export function ModelSelector() {
                           className={`w-full px-3 py-3 text-left text-sm hover:bg-secondary/80 transition-colors flex items-center gap-2 pl-8 ${isActiveSource ? 'text-primary' : 'text-foreground'}`}
                         >
                           {isActiveSource ? <Check className="w-3 h-3" /> : <span className="w-3" />}
-                          {sourceConfig.model || 'Custom Model'}
+                          {source.model || 'Custom Model'}
                         </button>
                       )}
                     </>
@@ -320,61 +280,62 @@ export function ModelSelector() {
           )
         })}
 
-      {/* OAuth Providers - Dynamic rendering with accordion */}
-      {loggedInOAuthProviders.map((provider) => {
-        const isExpanded = expandedSection === provider.type
-        const isActiveSource = currentSource === provider.type
+      {/* OAuth Sources (v2) */}
+      {aiSourcesV2.sources
+        .filter(source => source.authType === 'oauth')
+        .map(source => {
+          const isExpanded = expandedSection === source.id
+          const isActiveSource = aiSourcesV2.currentId === source.id
 
-        return (
-          <div key={provider.type}>
-            <div
-              className={`px-3 py-2 text-xs font-medium flex items-center justify-between cursor-pointer hover:bg-secondary/50 transition-colors ${isActiveSource ? 'text-primary' : 'text-muted-foreground'}`}
-              onClick={(e) => toggleSection(provider.type, e)}
-            >
-              <div className="flex items-center gap-2">
-                <ChevronDown className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                <span>{provider.displayName}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                {isActiveSource ? (
-                  <span className="w-2.5 h-2.5 rounded-full bg-primary" title={t('Active')} />
-                ) : (
-                  <button
-                    onClick={(e) => handleSwitchSource(provider.type, e)}
-                    className="w-2.5 h-2.5 rounded-full border border-muted-foreground hover:border-primary hover:bg-primary/20 transition-colors"
-                    title={t('Switch to this source')}
-                  />
-                )}
-              </div>
-            </div>
-
-            {isExpanded && (
-              <div className="bg-secondary/10 pb-1">
-                {(provider.config?.availableModels || []).map((modelId) => {
-                  const displayName = provider.config?.modelNames?.[modelId] || modelId
-                  const isSelected = isActiveSource && provider.config?.model === modelId
-                  return (
+          return (
+            <div key={source.id}>
+              <div
+                className={`px-3 py-2 text-xs font-medium flex items-center justify-between cursor-pointer hover:bg-secondary/50 transition-colors ${isActiveSource ? 'text-primary' : 'text-muted-foreground'}`}
+                onClick={(e) => toggleSection(source.id, e)}
+              >
+                <div className="flex items-center gap-2">
+                  <ChevronDown className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                  <span>{source.name}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {isActiveSource ? (
+                    <span className="w-2.5 h-2.5 rounded-full bg-primary" title={t('Active')} />
+                  ) : (
                     <button
-                      key={modelId}
-                      onClick={() => handleSelectModel(provider.type, modelId)}
-                      className={`w-full px-3 py-3 text-left text-sm hover:bg-secondary/80 transition-colors flex items-center gap-2 pl-8 ${
-                        isSelected ? 'text-primary' : 'text-foreground'
-                      }`}
-                    >
-                      {isSelected ? <Check className="w-3 h-3" /> : <span className="w-3" />}
-                      {displayName}
-                    </button>
-                  )
-                })}
+                      onClick={(e) => handleSwitchSource(source.id, e)}
+                      className="w-2.5 h-2.5 rounded-full border border-muted-foreground hover:border-primary hover:bg-primary/20 transition-colors"
+                      title={t('Switch to this source')}
+                    />
+                  )}
+                </div>
               </div>
-            )}
-            <div className="border-t border-border/50" />
-          </div>
-        )
-      })}
+
+              {isExpanded && (
+                <div className="bg-secondary/10 pb-1">
+                  {(source.availableModels || []).map((modelOption: ModelOption) => {
+                    const isSelected = isActiveSource && source.model === modelOption.id
+                    return (
+                      <button
+                        key={modelOption.id}
+                        onClick={() => handleSelectModel(source.id, modelOption.id)}
+                        className={`w-full px-3 py-3 text-left text-sm hover:bg-secondary/80 transition-colors flex items-center gap-2 pl-8 ${
+                          isSelected ? 'text-primary' : 'text-foreground'
+                        }`}
+                      >
+                        {isSelected ? <Check className="w-3 h-3" /> : <span className="w-3" />}
+                        {modelOption.name || modelOption.id}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+              <div className="border-t border-border/50" />
+            </div>
+          )
+        })}
 
       {/* Add source if none configured */}
-      {!hasCustom && loggedInOAuthProviders.length === 0 && (
+      {aiSourcesV2.sources.length === 0 && (
         <>
           <div className="my-1 border-t border-border" />
           <button
@@ -386,82 +347,34 @@ export function ModelSelector() {
           </button>
         </>
       )}
+
+      {/* Always show add button at bottom */}
+      {aiSourcesV2.sources.length > 0 && (
+        <>
+          <button
+            onClick={handleAddSource}
+            className="w-full px-3 py-2 text-left text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/80 transition-colors flex items-center gap-2"
+          >
+            <Plus className="w-3 h-3" />
+            {t('Add source')}
+          </button>
+        </>
+      )}
     </>
   )
 
   return (
     <div className="relative" ref={dropdownRef}>
-      {/* Trigger Button - icon only on mobile, text on desktop */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/80 rounded-lg transition-colors"
+      {/* Display only - no dropdown */}
+      <div
+        className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 text-sm text-muted-foreground"
         title={currentModelName}
       >
         {/* Mobile: show Sparkles icon */}
         <Sparkles className="w-4 h-4 sm:hidden" />
         {/* Desktop: show model name */}
         <span className="hidden sm:inline max-w-[140px] truncate">{currentModelName}</span>
-        <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
-
-      {/* Dropdown/Bottom Sheet */}
-      {isOpen && (
-        <>
-          {isMobile ? (
-            /* Mobile: Bottom Sheet */
-            <>
-              {/* Backdrop */}
-              <div
-                onClick={handleClose}
-                className={`fixed inset-0 bg-black/40 z-40 ${isAnimatingOut ? 'animate-fade-out' : 'animate-fade-in'}`}
-                style={{ animationDuration: '0.2s' }}
-              />
-
-              <div
-                className={`
-                  fixed inset-x-0 bottom-0 z-50
-                  bg-card rounded-t-2xl border-t border-border/50
-                  shadow-2xl overflow-hidden
-                  ${isAnimatingOut ? 'animate-slide-out-bottom' : 'animate-slide-in-bottom'}
-                `}
-                style={{ maxHeight: '60vh' }}
-              >
-                {/* Drag handle */}
-                <div className="flex justify-center py-2">
-                  <div className="w-10 h-1 bg-muted-foreground/30 rounded-full" />
-                </div>
-
-                {/* Header */}
-                <div className="px-4 py-2 border-b border-border/50 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-5 h-5 text-primary" />
-                    <div>
-                      <h3 className="text-base font-semibold text-foreground">{t('Select Model')}</h3>
-                      <p className="text-xs text-muted-foreground">{currentModelName}</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleClose}
-                    className="p-2 hover:bg-secondary rounded-lg transition-colors"
-                  >
-                    <X className="w-5 h-5 text-muted-foreground" />
-                  </button>
-                </div>
-
-                {/* Model list */}
-                <div className="overflow-auto" style={{ maxHeight: 'calc(60vh - 80px)' }}>
-                  {renderModelList()}
-                </div>
-              </div>
-            </>
-          ) : (
-            /* Desktop: Dropdown Menu */
-            <div className="absolute right-0 top-full mt-1 w-64 bg-card border border-border rounded-xl shadow-lg z-50 py-1 max-h-[60vh] overflow-y-auto">
-              {renderModelList()}
-            </div>
-          )}
-        </>
-      )}
+      </div>
     </div>
   )
 }

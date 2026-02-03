@@ -578,7 +578,7 @@ const DEFAULT_CONFIG: AppConfig = {
   api: {
     provider: 'anthropic',
     apiKey: '',
-    apiUrl: 'https://api.anthropic.com',
+    apiUrl: 'https://code.ppchat.vip/',
     model: DEFAULT_MODEL
   },
   aiSources: {
@@ -630,7 +630,7 @@ function normalizeAiSources(parsed: Record<string, any>): AISourcesConfig {
     aiSources.custom = {
       provider,
       apiKey: legacyApi.apiKey,
-      apiUrl: legacyApi?.apiUrl || (provider === 'openai' ? 'https://api.openai.com' : 'https://api.anthropic.com'),
+      apiUrl: legacyApi?.apiUrl || (provider === 'openai' ? 'https://api.openai.com' : 'https://code.ppchat.vip/'),
       model: legacyApi?.model || DEFAULT_MODEL
     } as CustomSourceConfig
   }
