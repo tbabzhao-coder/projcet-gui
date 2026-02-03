@@ -235,7 +235,7 @@ export async function sendMessage(
         append: buildSystemPromptAppend(workDir, credentials.model) + (aiBrowserEnabled ? AI_BROWSER_SYSTEM_PROMPT : '')
       },
       maxTurns: 50,
-      allowedTools: ['Read', 'Write', 'Edit', 'Grep', 'Glob', 'Bash', 'Skill'],
+      allowedTools: ['Read', 'Write', 'Edit', 'Grep', 'Glob', 'Bash', 'Skill', 'AskUserQuestion'],
       // Disable WebSearch and WebFetch tools
       disallowedTools: ['WebSearch', 'WebFetch'],
       // Load both user and project settings

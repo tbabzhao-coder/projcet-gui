@@ -19,7 +19,8 @@ import { CollapsedThoughtProcess } from './CollapsedThoughtProcess'
 import { CompactNotice } from './CompactNotice'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { BrowserTaskCard, isBrowserTool } from '../tool/BrowserTaskCard'
-import type { Message, Thought, CompactInfo } from '../../types'
+import { ToolCard } from '../tool/ToolCard'
+import type { Message, Thought, CompactInfo, ToolCall } from '../../types'
 import { useTranslation } from '../../i18n'
 
 interface MessageListProps {
@@ -33,6 +34,8 @@ interface MessageListProps {
   error?: string | null  // Error message to display when generation fails
   isCompact?: boolean  // Compact mode when Canvas is open
   textBlockVersion?: number  // Increments on each new text block (for StreamingBubble reset)
+  pendingToolApproval?: ToolCall | null  // Tool call waiting for user approval
+  conversationId?: string  // Current conversation ID for approval actions
 }
 
 /**
@@ -262,7 +265,9 @@ export function MessageList({
   compactInfo = null,
   error = null,
   isCompact = false,
-  textBlockVersion = 0
+  textBlockVersion = 0,
+  pendingToolApproval = null,
+  conversationId
 }: MessageListProps) {
   const { t } = useTranslation()
 
@@ -350,6 +355,16 @@ export function MessageList({
                 />
               </div>
             )} */}
+
+            {/* Pending tool approval card */}
+            {pendingToolApproval && (
+              <div className="mb-4">
+                <ToolCard
+                  toolCall={pendingToolApproval}
+                  conversationId={conversationId}
+                />
+              </div>
+            )}
 
             {/* Streaming bubble with accumulated content and auto-scroll */}
             <StreamingBubble

@@ -254,6 +254,19 @@ export interface Conversation extends ConversationMeta {
 // Message Types
 // ============================================
 
+// Question types for AskUserQuestion tool
+export interface QuestionOption {
+  label: string;
+  description: string;
+}
+
+export interface Question {
+  question: string;
+  header: string;
+  options: QuestionOption[];
+  multiSelect: boolean;
+}
+
 export interface ToolCall {
   id: string;
   name: string;
@@ -264,6 +277,7 @@ export interface ToolCall {
   progress?: number;
   requiresApproval?: boolean;
   description?: string;
+  questions?: Question[];  // For AskUserQuestion tool
 }
 
 // ============================================

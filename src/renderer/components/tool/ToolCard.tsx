@@ -17,8 +17,9 @@ import {
 } from 'lucide-react'
 import { ToolIcon } from '../icons/ToolIcons'
 import { useChatStore } from '../../stores/chat.store'
-import type { ToolCall } from '../../types'
+import type { ToolCall, Question } from '../../types'
 import { useTranslation } from '../../i18n'
+import { QuestionCard } from './QuestionCard'
 
 interface ToolCardProps {
   toolCall: ToolCall
@@ -196,8 +197,8 @@ export function ToolCard({ toolCall, conversationId }: ToolCardProps) {
         </div>
       )}
 
-      {/* Approval buttons */}
-      {toolCall.status === 'waiting_approval' && (
+      {/* Approval buttons for Bash */}
+      {toolCall.status === 'waiting_approval' && toolCall.name === 'Bash' && (
         <div className="px-3 py-3 border-t border-border bg-yellow-500/5">
           <p className="text-xs text-muted-foreground mb-3">
             {t('This action requires your confirmation to continue')}
@@ -228,6 +229,17 @@ export function ToolCard({ toolCall, conversationId }: ToolCardProps) {
               {t('Reject')}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Question card for AskUserQuestion */}
+      {toolCall.status === 'waiting_approval' && toolCall.name === 'AskUserQuestion' && toolCall.input.questions && conversationId && (
+        <div className="border-t border-border">
+          <QuestionCard
+            toolCallId={toolCall.id}
+            questions={toolCall.input.questions as Question[]}
+            conversationId={conversationId}
+          />
         </div>
       )}
 

@@ -3,7 +3,7 @@
  */
 
 import { ipcMain, BrowserWindow } from 'electron'
-import { sendMessage, stopGeneration, handleToolApproval, getSessionState, ensureSessionWarm, testMcpConnections } from '../services/agent'
+import { sendMessage, stopGeneration, handleToolApproval, handleQuestionAnswer, getSessionState, ensureSessionWarm, testMcpConnections } from '../services/agent'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -81,6 +81,17 @@ export function registerAgentHandlers(window: BrowserWindow | null): void {
   ipcMain.handle('agent:reject-tool', async (_event, conversationId: string) => {
     try {
       handleToolApproval(conversationId, false)
+      return { success: true }
+    } catch (error: unknown) {
+      const err = error as Error
+      return { success: false, error: err.message }
+    }
+  })
+
+  // Answer question for a specific conversation
+  ipcMain.handle('agent:answer-question', async (_event, conversationId: string, answers: Record<string, string>) => {
+    try {
+      handleQuestionAnswer(conversationId, answers)
       return { success: true }
     } catch (error: unknown) {
       const err = error as Error

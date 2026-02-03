@@ -139,6 +139,7 @@ export interface SessionState {
   spaceId: string
   conversationId: string
   pendingPermissionResolve: ((approved: boolean) => void) | null
+  pendingQuestionResolve: ((answers: Record<string, string>) => void) | null
   thoughts: Thought[]  // Backend accumulates thoughts (Single Source of Truth)
 }
 

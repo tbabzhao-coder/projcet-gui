@@ -123,6 +123,44 @@ export function createCanUseTool(
       }
     }
 
+    // Handle AskUserQuestion - interactive user prompts
+    if (toolName === 'AskUserQuestion') {
+      const questions = input.questions as Array<{
+        question: string
+        header: string
+        options: Array<{ label: string; description: string }>
+        multiSelect: boolean
+      }>
+
+      // Create tool call object for UI display
+      const toolCall: ToolCall = {
+        id: `question-${Date.now()}`,
+        name: toolName,
+        status: 'waiting_approval',
+        input,
+        requiresApproval: true,
+        description: questions?.[0]?.question || 'Waiting for user response'
+      }
+
+      sendToRenderer('agent:tool-call', spaceId, conversationId, toolCall as unknown as Record<string, unknown>)
+
+      // Wait for user answers using session-specific resolver
+      const session = activeSessions.get(conversationId)
+      if (!session) {
+        return { behavior: 'deny' as const, message: 'Session not found' }
+      }
+
+      return new Promise((resolve) => {
+        session.pendingQuestionResolve = (answers: Record<string, string>) => {
+          // Inject answers into tool input
+          resolve({
+            behavior: 'allow' as const,
+            updatedInput: { ...input, answers }
+          })
+        }
+      })
+    }
+
     // AI Browser tools are always allowed (they run in sandboxed browser context)
     if (isAIBrowserTool(toolName)) {
       console.log(`[Agent] AI Browser tool allowed: ${toolName}`)
@@ -146,5 +184,16 @@ export function handleToolApproval(conversationId: string, approved: boolean): v
   if (session?.pendingPermissionResolve) {
     session.pendingPermissionResolve(approved)
     session.pendingPermissionResolve = null
+  }
+}
+
+/**
+ * Handle question answer from renderer for a specific conversation
+ */
+export function handleQuestionAnswer(conversationId: string, answers: Record<string, string>): void {
+  const session = activeSessions.get(conversationId)
+  if (session?.pendingQuestionResolve) {
+    session.pendingQuestionResolve(answers)
+    session.pendingQuestionResolve = null
   }
 }

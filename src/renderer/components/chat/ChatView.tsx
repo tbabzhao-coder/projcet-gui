@@ -152,7 +152,7 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
   const currentConversation = getCurrentConversation()
   const { isLoadingConversation } = useChatStore()
   const session = getCurrentSession()
-  const { isGenerating, streamingContent, isStreaming, thoughts, isThinking, compactInfo, error, textBlockVersion } = session
+  const { isGenerating, streamingContent, isStreaming, thoughts, isThinking, compactInfo, error, textBlockVersion, pendingToolApproval } = session
 
   // Scrollable container ref
   const containerRef = useRef<HTMLDivElement>(null)
@@ -307,6 +307,8 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
               error={error}
               isCompact={isCompact}
               textBlockVersion={textBlockVersion}
+              pendingToolApproval={pendingToolApproval}
+              conversationId={currentConversation?.id}
             />
           )}
         </div>

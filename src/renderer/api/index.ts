@@ -384,6 +384,13 @@ export const api = {
     return httpRequest('POST', '/api/agent/reject', { conversationId })
   },
 
+  answerQuestion: async (conversationId: string, answers: Record<string, string>): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.project4.answerQuestion(conversationId, answers)
+    }
+    return httpRequest('POST', '/api/agent/answer-question', { conversationId, answers })
+  },
+
   // Get current session state for recovery after refresh
   getSessionState: async (conversationId: string): Promise<ApiResponse> => {
     if (isElectron()) {

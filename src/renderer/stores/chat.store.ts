@@ -121,6 +121,7 @@ interface ChatState {
   // Tool approval
   approveTool: (conversationId: string) => Promise<void>
   rejectTool: (conversationId: string) => Promise<void>
+  answerQuestion: (conversationId: string, answers: Record<string, string>) => Promise<void>
 
   // Event handlers (called from App component) - with session IDs
   handleAgentMessage: (data: AgentEventBase & { content: string; isComplete: boolean }) => void
@@ -668,6 +669,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
       })
     } catch (error) {
       console.error('Failed to reject tool:', error)
+    }
+  },
+
+  // Answer question for a specific conversation
+  answerQuestion: async (conversationId: string, answers: Record<string, string>) => {
+    try {
+      await api.answerQuestion(conversationId, answers)
+      set((state) => {
+        const newSessions = new Map(state.sessions)
+        const session = newSessions.get(conversationId)
+        if (session) {
+          newSessions.set(conversationId, { ...session, pendingToolApproval: null })
+        }
+        return { sessions: newSessions }
+      })
+    } catch (error) {
+      console.error('Failed to answer question:', error)
+      throw error
     }
   },
 

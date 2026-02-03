@@ -453,6 +453,7 @@ export function createSessionState(
     spaceId,
     conversationId,
     pendingPermissionResolve: null,
+    pendingQuestionResolve: null,
     thoughts: []
   }
 }

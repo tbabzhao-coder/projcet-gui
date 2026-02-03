@@ -548,5 +548,10 @@
   "Select an existing project folder": "选择现有项目文件夹",
   "Create Workspace": "创建工作目录",
   "{{count}} artifacts_one": "{{count}} 个产物",
-  "{{count}} artifacts_other": "{{count}} 个产物"
+  "{{count}} artifacts_other": "{{count}} 个产物",
+  "Claude needs your input": "AI需要你的输入",
+  "Please select your answer below": "请在下方选择你的答案",
+  "You can select multiple options": "你可以选择多个选项",
+  "Submit answers": "提交答案",
+  "Submitting...": "提交中..."
 }
