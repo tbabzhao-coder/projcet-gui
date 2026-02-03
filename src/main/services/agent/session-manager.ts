@@ -323,7 +323,10 @@ export async function ensureSessionWarm(
     canUseTool: createCanUseTool(workDir, spaceId, conversationId),  // Consistent with sendMessage
     includePartialMessages: true,
     executable: electronPath,
-    executableArgs: ['--no-warnings'],
+    executableArgs: [
+      '--no-warnings',
+      '--max-old-space-size=4096'  // Increase heap size to 4GB to prevent OOM on low-memory Windows machines
+    ],
     // MCP servers configuration - pass through enabled servers only
     ...((() => {
       const enabledMcp = getEnabledMcpServers(config.mcpServers || {})

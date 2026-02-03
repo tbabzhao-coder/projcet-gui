@@ -248,7 +248,10 @@ export async function sendMessage(
       canUseTool: createCanUseTool(workDir, spaceId, conversationId),
       includePartialMessages: true,  // Requires SDK patch: enable token-level streaming (stream_event)
       executable: electronPath,
-      executableArgs: ['--no-warnings'],
+      executableArgs: [
+        '--no-warnings',
+        '--max-old-space-size=4096'  // Increase heap size to 4GB to prevent OOM on low-memory Windows machines
+      ],
       // Extended thinking: enable when user requests it (10240 tokens, same as Claude Code CLI Tab)
       ...(thinkingEnabled ? { maxThinkingTokens: 10240 } : {}),
       // MCP servers configuration

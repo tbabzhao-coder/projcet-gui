@@ -162,7 +162,10 @@ export async function testMcpConnections(
         anthropicBaseUrl,
         cwd,
         executable: electronPath,
-        executableArgs: ['--no-warnings'],
+        executableArgs: [
+          '--no-warnings',
+          '--max-old-space-size=4096'  // Increase heap size to 4GB to prevent OOM on low-memory Windows machines
+        ],
         env: {
           // IMPORTANT: Spread process.env first, then override with our values
           // This ensures our configured API key takes precedence over any system environment variables
