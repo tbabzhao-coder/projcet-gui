@@ -105,4 +105,4 @@ export function isRouterRunning(): boolean {
 export { createApp } from './router'
 export { handleMessagesRequest, handleCountTokensRequest } from './request-handler'
 export { withRequestQueue, generateQueueKey, clearRequestQueues, getPendingRequestCount } from './request-queue'
-export { parseApiType, getApiTypeFromEnv, resolveApiType, shouldForceStream } from './api-type'
+export { getApiTypeFromUrl, isValidEndpointUrl, getEndpointUrlError, shouldForceStream } from './api-type'
