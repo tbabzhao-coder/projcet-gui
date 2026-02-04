@@ -7,6 +7,7 @@ import { join } from 'path'
 import { homedir } from 'os'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { getPythonExecutable, getBundledPythonPath } from './python-runtime.service'
+import { getBundledNodeExecutable } from './node-runtime.service'
 
 // Import analytics config type
 import type { AnalyticsConfig } from './analytics/types'
@@ -227,29 +228,35 @@ function getBuiltInMcpServers(): Record<string, any> {
     // Use cli.js instead of index.js (bin entry point)
     const playwrightCliPath = playwrightBasePath.replace('index.js', 'cli.js')
     
-    // IMPORTANT: Use 'node' from PATH instead of absolute path
+    // IMPORTANT: Use bundled Node.js if available, fallback to PATH
     // This ensures the config works across different environments:
-    // - Development: user's node installation
-    // - Production: system node installation
+    // - Development: bundled node if available, otherwise user's node
+    // - Production: bundled node from extraResources
     // - Cross-platform: Windows/Mac/Linux compatibility
-    // The OS will resolve 'node' from PATH at runtime
-    const nodeCommand = 'node'
-    
+    const bundledNode = getBundledNodeExecutable()
+    const nodeCommand = bundledNode || 'node'
+
+    if (bundledNode) {
+      console.log('[Config] Using bundled Node.js for Playwright MCP:', bundledNode)
+    } else {
+      console.log('[Config] Bundled Node.js not found, using system node from PATH')
+    }
+
     // Build args array: [cli.js, ...browser-args if configured]
     const args: string[] = [playwrightCliPath]
-    
+
     // Check if user has configured browserArgs in the saved config
     // We'll merge user's browserArgs with the default config later in getConfig()
     // For now, just set up the base configuration
-    
+
     builtIn['playwright'] = {
-      command: nodeCommand,  // Use 'node' from PATH (portable)
+      command: nodeCommand,  // Use bundled Node.js or fallback to PATH
       args,  // Will be enhanced with browserArgs if user configured them
       disabled: false,
       __builtIn: true
     }
     console.log('[Config] Built-in Playwright MCP server configured:')
-    console.log('  Command: node (from PATH)')
+    console.log('  Command:', nodeCommand)
     console.log('  Script:', playwrightCliPath)
   }
   
@@ -319,7 +326,8 @@ function getBuiltInMcpServers(): Record<string, any> {
   if (filesystemBasePath) {
     // Get the bin entry point from package.json
     const filesystemBinPath = filesystemBasePath.replace(/[\\\/]dist[\\\/]index\.js$/, '/dist/index.js')
-    const nodeCommand = 'node'
+    const bundledNode = getBundledNodeExecutable()
+    const nodeCommand = bundledNode || 'node'
     const defaultAllowedPath = homedir()
 
     builtIn['filesystem'] = {
@@ -329,7 +337,7 @@ function getBuiltInMcpServers(): Record<string, any> {
       __builtIn: true
     }
     console.log('[Config] Built-in Filesystem MCP server configured:')
-    console.log('  Command: node (from PATH)')
+    console.log('  Command:', nodeCommand)
     console.log('  Script:', filesystemBinPath)
     console.log('  Allowed path:', defaultAllowedPath)
   } else {
@@ -341,7 +349,8 @@ function getBuiltInMcpServers(): Record<string, any> {
   if (memoryBasePath) {
     // Get the bin entry point from package.json
     const memoryBinPath = memoryBasePath.replace(/[\\\/]dist[\\\/]index\.js$/, '/dist/index.js')
-    const nodeCommand = 'node'
+    const bundledNode = getBundledNodeExecutable()
+    const nodeCommand = bundledNode || 'node'
 
     builtIn['memory'] = {
       command: nodeCommand,
@@ -350,7 +359,7 @@ function getBuiltInMcpServers(): Record<string, any> {
       __builtIn: true
     }
     console.log('[Config] Built-in Memory MCP server configured:')
-    console.log('  Command: node (from PATH)')
+    console.log('  Command:', nodeCommand)
     console.log('  Script:', memoryBinPath)
   } else {
     console.warn('[Config] @modelcontextprotocol/server-memory not found, memory MCP will not be available')
@@ -360,7 +369,8 @@ function getBuiltInMcpServers(): Record<string, any> {
   // Bundled as dependency; run via node with resolved path (same pattern as filesystem/memory).
   const quickChartBasePath = getBuiltInMcpServerPath('quick-chart-mcp')
   if (quickChartBasePath) {
-    const nodeCommand = 'node'
+    const bundledNode = getBundledNodeExecutable()
+    const nodeCommand = bundledNode || 'node'
     builtIn['quick-chart'] = {
       command: nodeCommand,
       args: [quickChartBasePath],
@@ -368,7 +378,7 @@ function getBuiltInMcpServers(): Record<string, any> {
       __builtIn: true
     }
     console.log('[Config] Built-in QuickChart MCP server configured:')
-    console.log('  Command: node (from PATH)')
+    console.log('  Command:', nodeCommand)
     console.log('  Script:', quickChartBasePath)
   } else {
     console.warn('[Config] quick-chart-mcp not found, QuickChart MCP will not be available')

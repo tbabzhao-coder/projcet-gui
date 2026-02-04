@@ -42,10 +42,10 @@ export function getBundledNodePath(): string | null {
     // Mac: support both arm64 and x64
     if (arch === 'arm64') {
       nodeDirName = 'node-arm64'
-      nodeExecutableName = 'node'
+      nodeExecutableName = 'bin/node'
     } else {
       nodeDirName = 'node-x64'
-      nodeExecutableName = 'node'
+      nodeExecutableName = 'bin/node'
     }
   } else {
     // Linux or other platforms - not supported yet
