@@ -19,6 +19,7 @@ import {
   createAIBrowserMcpServer
 } from '../ai-browser'
 import { buildEnvWithBundledNode } from '../node-runtime.service'
+import { buildEnvWithBundledPython } from '../python-runtime.service'
 import type {
   AgentRequest,
   ToolCall,
@@ -194,10 +195,11 @@ export async function sendMessage(
       cwd: workDir,
       abortController: abortController,
       env: (() => {
-        // IMPORTANT: Build env with bundled Node.js paths for Git Bash
-        // This sets both PATH and ORIGINAL_PATH to ensure Git Bash uses our bundled Node.js
+        // IMPORTANT: Build env with bundled Node.js and Python paths
+        // This sets both PATH and ORIGINAL_PATH to ensure Git Bash uses our bundled runtimes
         // Git Bash's /etc/profile rebuilds PATH using ORIGINAL_PATH, so we must set both
-        const baseEnv = buildEnvWithBundledNode(process.env)
+        let baseEnv = buildEnvWithBundledNode(process.env)
+        baseEnv = buildEnvWithBundledPython(baseEnv)
 
         const env = {
           ...baseEnv,

@@ -167,7 +167,14 @@ export function buildEnvWithBundledNode(existingEnv: NodeJS.ProcessEnv): NodeJS.
     return existingEnv
   }
 
-  const unixStylePath = toUnixStylePath(bundledNodePath)
+  // For Mac/Linux, we need to add the bin directory to PATH
+  // For Windows, the node.exe is in the root directory
+  const osPlatform = platform()
+  const binPath = osPlatform === 'win32'
+    ? bundledNodePath
+    : join(bundledNodePath, 'bin')
+
+  const unixStylePath = toUnixStylePath(binPath)
   const separator = ':'
   const existingPath = existingEnv.PATH || ''
 
@@ -186,7 +193,7 @@ export function buildEnvWithBundledNode(existingEnv: NodeJS.ProcessEnv): NodeJS.
 
   // Only log once to reduce noise
   if (!envConfiguredLogged) {
-    console.log(`[NodeRuntime] Env configured for Git Bash: PATH and ORIGINAL_PATH prepended with ${unixStylePath}`)
+    console.log(`[NodeRuntime] Env configured: PATH and ORIGINAL_PATH prepended with ${unixStylePath}`)
     envConfiguredLogged = true
   }
 

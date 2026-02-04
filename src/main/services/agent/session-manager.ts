@@ -32,6 +32,7 @@ import {
   calculateCredentialsHash
 } from './helpers'
 import { buildEnvWithBundledNode } from '../node-runtime.service'
+import { buildEnvWithBundledPython } from '../python-runtime.service'
 import { createCanUseTool } from './permission-handler'
 
 // ============================================
@@ -281,24 +282,29 @@ export async function ensureSessionWarm(
     model: sdkModel,
     cwd: workDir,
     abortController,  // Consistent with sendMessage
-    env: {
-      // IMPORTANT: Build env with bundled Node.js paths for Git Bash
-      // This sets both PATH and ORIGINAL_PATH to ensure Git Bash uses our bundled Node.js
+    env: (() => {
+      // IMPORTANT: Build env with bundled Node.js and Python paths
+      // This sets both PATH and ORIGINAL_PATH to ensure Git Bash uses our bundled runtimes
       // Git Bash's /etc/profile rebuilds PATH using ORIGINAL_PATH, so we must set both
-      ...buildEnvWithBundledNode(process.env),
-      // Then override with our critical values (highest priority)
-      ELECTRON_RUN_AS_NODE: 1,
-      ELECTRON_NO_ATTACH_CONSOLE: 1,
-      ANTHROPIC_API_KEY: anthropicApiKey,  // Our configured API key (overrides system)
-      ANTHROPIC_BASE_URL: anthropicBaseUrl,
-      // Ensure localhost bypasses proxy
-      NO_PROXY: 'localhost,127.0.0.1',
-      no_proxy: 'localhost,127.0.0.1',
-      // Disable unnecessary API requests
-      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
-      DISABLE_TELEMETRY: '1',
-      DISABLE_COST_WARNINGS: '1'
-    },
+      let baseEnv = buildEnvWithBundledNode(process.env)
+      baseEnv = buildEnvWithBundledPython(baseEnv)
+
+      return {
+        ...baseEnv,
+        // Then override with our critical values (highest priority)
+        ELECTRON_RUN_AS_NODE: 1,
+        ELECTRON_NO_ATTACH_CONSOLE: 1,
+        ANTHROPIC_API_KEY: anthropicApiKey,  // Our configured API key (overrides system)
+        ANTHROPIC_BASE_URL: anthropicBaseUrl,
+        // Ensure localhost bypasses proxy
+        NO_PROXY: 'localhost,127.0.0.1',
+        no_proxy: 'localhost,127.0.0.1',
+        // Disable unnecessary API requests
+        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+        DISABLE_TELEMETRY: '1',
+        DISABLE_COST_WARNINGS: '1'
+      }
+    })(),
     extraArgs: {
       'dangerously-skip-permissions': null
     },

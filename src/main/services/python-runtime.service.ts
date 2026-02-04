@@ -194,3 +194,69 @@ export function getPythonExecutable(): string {
 export function hasBundledPython(): boolean {
   return getBundledPythonPath() !== null
 }
+
+// Cache for environment configuration logging
+let pythonEnvConfiguredLogged = false
+
+/**
+ * Build environment variables with bundled Python in PATH
+ * This ensures AI Bash commands use bundled Python instead of system Python
+ *
+ * @param existingEnv - The existing environment variables
+ * @returns Environment variables with bundled Python paths configured
+ */
+export function buildEnvWithBundledPython(existingEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const bundledPythonPath = getBundledPythonPath()
+
+  if (!bundledPythonPath) {
+    if (!pythonEnvConfiguredLogged) {
+      console.log('[PythonRuntime] No bundled Python found, using original env')
+      pythonEnvConfiguredLogged = true
+    }
+    return existingEnv
+  }
+
+  // Extract the bin directory from the full Python executable path
+  // bundledPythonPath is like: /path/to/python-arm64/bin/python3
+  // We need: /path/to/python-arm64/bin
+  const osPlatform = platform()
+  let binPath: string
+
+  if (osPlatform === 'win32') {
+    // Windows: python.exe is in root directory
+    // bundledPythonPath = /path/to/python-win-x64/python.exe
+    // binPath = /path/to/python-win-x64
+    binPath = join(bundledPythonPath, '..')
+  } else {
+    // Mac/Linux: python3 is in bin directory
+    // bundledPythonPath = /path/to/python-arm64/bin/python3
+    // binPath = /path/to/python-arm64/bin
+    binPath = join(bundledPythonPath, '..')
+  }
+
+  const separator = ':'
+  const existingPath = existingEnv.PATH || ''
+
+  // Build new PATH with bundled Python prepended
+  const newPath = existingPath
+    ? `${binPath}${separator}${existingPath}`
+    : binPath
+
+  // Also set ORIGINAL_PATH for Git Bash compatibility (same as Node.js)
+  const existingOriginalPath = existingEnv.ORIGINAL_PATH || existingPath
+  const newOriginalPath = existingOriginalPath
+    ? `${binPath}${separator}${existingOriginalPath}`
+    : binPath
+
+  // Only log once to reduce noise
+  if (!pythonEnvConfiguredLogged) {
+    console.log(`[PythonRuntime] Env configured: PATH and ORIGINAL_PATH prepended with ${binPath}`)
+    pythonEnvConfiguredLogged = true
+  }
+
+  return {
+    ...existingEnv,
+    PATH: newPath,
+    ORIGINAL_PATH: newOriginalPath
+  }
+}
