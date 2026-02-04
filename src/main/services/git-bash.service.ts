@@ -6,7 +6,7 @@
  */
 
 import { existsSync } from 'fs'
-import { join } from 'path'
+import { join, dirname } from 'path'
 import { app } from 'electron'
 
 export interface GitBashDetectionResult {
@@ -18,12 +18,12 @@ export interface GitBashDetectionResult {
 /**
  * Detect Git Bash installation on the system
  *
- * Detection order:
- * 1. Environment variable (CLAUDE_CODE_GIT_BASH_PATH)
- * 2. Bundled Git Bash (extraResources/git-bash-win-x64) - NEW!
- * 3. App-local installation (userData/git-bash)
- * 4. System installation (Program Files)
- * 5. PATH-based discovery
+ * Detection order (optimized for offline installation):
+ * 1. Environment variable (CLAUDE_CODE_GIT_BASH_PATH) - for development/testing
+ * 2. System installation (Program Files) - prefer user's existing Git
+ * 3. App-local installation (userData/git-bash) - offline installed by app
+ * 4. Bundled Git Bash (extraResources/git-bash-win-x64) - fallback to bundled
+ * 5. PATH-based discovery - last resort
  */
 export function detectGitBash(): GitBashDetectionResult {
   // Non-Windows platforms use system bash
@@ -31,28 +31,14 @@ export function detectGitBash(): GitBashDetectionResult {
     return { found: true, path: '/bin/bash', source: 'system' }
   }
 
-  // 1. Check environment variable
+  // 1. Check environment variable (for development/testing)
   const envPath = process.env.CLAUDE_CODE_GIT_BASH_PATH
   if (envPath && existsSync(envPath)) {
     console.log('[GitBash] Found via environment variable:', envPath)
     return { found: true, path: envPath, source: 'env-var' }
   }
 
-  // 2. Check bundled Git Bash (packaged with app)
-  const bundledGitBash = getBundledGitBashPath()
-  if (bundledGitBash && existsSync(bundledGitBash)) {
-    console.log('[GitBash] Found bundled installation:', bundledGitBash)
-    return { found: true, path: bundledGitBash, source: 'app-local' }
-  }
-
-  // 3. Check app-local installation (downloaded at runtime)
-  const localGitBash = join(app.getPath('userData'), 'git-bash', 'bin', 'bash.exe')
-  if (existsSync(localGitBash)) {
-    console.log('[GitBash] Found app-local installation:', localGitBash)
-    return { found: true, path: localGitBash, source: 'app-local' }
-  }
-
-  // 4. Check system installation paths
+  // 2. Check system installation paths (prefer user's existing Git)
   const systemPaths = [
     join(process.env.PROGRAMFILES || '', 'Git', 'bin', 'bash.exe'),
     join(process.env['PROGRAMFILES(X86)'] || '', 'Git', 'bin', 'bash.exe'),
@@ -68,7 +54,7 @@ export function detectGitBash(): GitBashDetectionResult {
     }
   }
 
-  // 5. Try to find git in PATH and derive bash path
+  // 3. Try to find git in PATH and derive bash path
   const gitFromPath = findGitInPath()
   if (gitFromPath) {
     // Git is typically at: C:\Program Files\Git\cmd\git.exe
@@ -78,6 +64,20 @@ export function detectGitBash(): GitBashDetectionResult {
       console.log('[GitBash] Found via PATH:', bashPath)
       return { found: true, path: bashPath, source: 'system' }
     }
+  }
+
+  // 4. Check app-local installation (offline installed by app)
+  const localGitBash = join(app.getPath('userData'), 'git-bash', 'bin', 'bash.exe')
+  if (existsSync(localGitBash)) {
+    console.log('[GitBash] Found app-local installation:', localGitBash)
+    return { found: true, path: localGitBash, source: 'app-local' }
+  }
+
+  // 5. Check bundled Git Bash (packaged with app) - fallback
+  const bundledGitBash = getBundledGitBashPath()
+  if (bundledGitBash && existsSync(bundledGitBash)) {
+    console.log('[GitBash] Found bundled installation:', bundledGitBash)
+    return { found: true, path: bundledGitBash, source: 'app-local' }
   }
 
   console.log('[GitBash] Not found')
@@ -146,4 +146,105 @@ export function isAppLocalInstallation(): boolean {
 export function setGitBashPathEnv(path: string): void {
   process.env.CLAUDE_CODE_GIT_BASH_PATH = path
   console.log('[GitBash] Environment variable set:', path)
+}
+
+/**
+ * Install Git Bash from bundled resources (offline installation)
+ * Copies the bundled Git Bash to userData for persistent use
+ *
+ * @returns Installation result with path or error
+ */
+export async function installBundledGitBash(): Promise<{
+  success: boolean
+  path?: string
+  error?: string
+}> {
+  try {
+    console.log('[GitBash] Starting offline installation from bundled resources...')
+
+    // Check if bundled Git Bash exists
+    const bundledPath = getBundledGitBashPath()
+    if (!bundledPath || !existsSync(bundledPath)) {
+      const error = 'Bundled Git Bash not found in application resources'
+      console.error('[GitBash]', error)
+      return { success: false, error }
+    }
+
+    // Get bundled directory (remove /bin/bash.exe to get root)
+    const bundledDir = join(bundledPath, '..', '..')
+    const normalizedBundledDir = join(bundledDir) // Normalize path
+
+    console.log('[GitBash] Bundled Git Bash found at:', normalizedBundledDir)
+
+    // Target directory in userData
+    const targetDir = getAppLocalGitBashDir()
+    const targetBashPath = join(targetDir, 'bin', 'bash.exe')
+
+    // Check if already installed
+    if (existsSync(targetBashPath)) {
+      console.log('[GitBash] Git Bash already installed at:', targetBashPath)
+      return { success: true, path: targetBashPath }
+    }
+
+    console.log('[GitBash] Copying to:', targetDir)
+
+    // Import fs for recursive copy
+    const fs = require('fs')
+    const { promisify } = require('util')
+    const copyFile = promisify(fs.copyFile)
+    const mkdir = promisify(fs.mkdir)
+    const readdir = promisify(fs.readdir)
+    const stat = promisify(fs.stat)
+
+    // Recursive copy function
+    async function copyRecursive(src: string, dest: string): Promise<void> {
+      const stats = await stat(src)
+
+      if (stats.isDirectory()) {
+        // Create directory if it doesn't exist
+        await mkdir(dest, { recursive: true })
+
+        // Read directory contents
+        const entries = await readdir(src)
+
+        // Copy each entry recursively
+        for (const entry of entries) {
+          const srcPath = join(src, entry)
+          const destPath = join(dest, entry)
+          await copyRecursive(srcPath, destPath)
+        }
+      } else {
+        // Ensure parent directory exists before copying file
+        await mkdir(dirname(dest), { recursive: true })
+        await copyFile(src, dest)
+      }
+    }
+
+    // Perform the copy
+    console.log('[GitBash] Copying files (this may take a moment)...')
+    await copyRecursive(normalizedBundledDir, targetDir)
+
+    // Verify installation
+    if (!existsSync(targetBashPath)) {
+      const error = 'Installation completed but bash.exe not found'
+      console.error('[GitBash]', error)
+      return { success: false, error }
+    }
+
+    console.log('[GitBash] Offline installation completed successfully')
+    return { success: true, path: targetBashPath }
+
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error)
+    console.error('[GitBash] Offline installation failed:', errorMsg)
+    return { success: false, error: errorMsg }
+  }
+}
+
+/**
+ * Check if bundled Git Bash is available for offline installation
+ */
+export function hasBundledGitBash(): boolean {
+  const bundledPath = getBundledGitBashPath()
+  return bundledPath !== null && existsSync(bundledPath)
 }

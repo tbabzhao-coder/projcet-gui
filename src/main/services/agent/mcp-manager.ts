@@ -18,6 +18,7 @@ import {
   broadcastToAllClients,
   setMainWindow
 } from './helpers'
+import { buildEnvWithBundledNode } from '../node-runtime.service'
 
 // ============================================
 // MCP Status Cache
@@ -167,10 +168,7 @@ export async function testMcpConnections(
           '--max-old-space-size=4096'  // Increase heap size to 4GB to prevent OOM on low-memory Windows machines
         ],
         env: {
-          // IMPORTANT: Spread process.env first, then override with our values
-          // This ensures our configured API key takes precedence over any system environment variables
-          ...process.env,
-          // Then override with our critical values (highest priority)
+          ...buildEnvWithBundledNode(process.env),
           ELECTRON_RUN_AS_NODE: '1',
           ELECTRON_NO_ATTACH_CONSOLE: '1',
           ANTHROPIC_API_KEY: anthropicApiKey,  // Our configured API key (overrides system)

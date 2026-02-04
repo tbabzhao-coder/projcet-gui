@@ -17,9 +17,9 @@
     "build:mac": "npm run build && electron-builder --mac",
     "build:win": "npm run build && electron-builder --win",
     "build:win-x64": "npm run build && electron-builder --win --x64",
-    "prepare:mac-arm64": "node scripts/prepare-cloudflared-mac-arm64.mjs && node scripts/prepare-python-mac-arm64.mjs",
-    "prepare:mac-x64": "node scripts/prepare-cloudflared-mac-x64.mjs && node scripts/prepare-python-mac-x64.mjs",
-    "prepare:win-x64": "node scripts/prepare-cloudflared-win-x64.mjs && node scripts/prepare-python-win-x64.mjs && node scripts/prepare-git-bash-win-x64.mjs",
+    "prepare:mac-arm64": "node scripts/prepare-cloudflared-mac-arm64.mjs && node scripts/prepare-python-mac-arm64.mjs && node scripts/prepare-node-mac-arm64.mjs",
+    "prepare:mac-x64": "node scripts/prepare-cloudflared-mac-x64.mjs && node scripts/prepare-python-mac-x64.mjs && node scripts/prepare-node-mac-x64.mjs",
+    "prepare:win-x64": "node scripts/prepare-cloudflared-win-x64.mjs && node scripts/prepare-python-win-x64.mjs && node scripts/prepare-git-bash-win-x64.mjs && node scripts/prepare-node-win-x64.mjs",
     "prepare:linux-x64": "node scripts/prepare-cloudflared-linux-x64.mjs",
     "build:mac-x64": "npm run build && electron-builder --mac --x64",
     "build:linux": "npm run build && electron-builder --linux",
@@ -157,8 +157,22 @@
         ]
       },
       {
+        "from": "resources/node-arm64",
+        "to": "node-arm64",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
         "from": "resources/python-x64",
         "to": "python-x64",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "resources/node-x64",
+        "to": "node-x64",
         "filter": [
           "**/*"
         ]
@@ -173,6 +187,13 @@
       {
         "from": "resources/git-bash-win-x64",
         "to": "git-bash-win-x64",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "resources/node-win-x64",
+        "to": "node-win-x64",
         "filter": [
           "**/*"
         ]

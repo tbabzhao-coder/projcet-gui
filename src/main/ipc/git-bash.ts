@@ -152,7 +152,7 @@ export async function initializeGitBashOnStartup(): Promise<{
   const detection = detectGitBash()
 
   if (detection.found && detection.path) {
-    // Git Bash found on system, save and use it
+    // Git Bash found (system or bundled), save and use it
     setGitBashPathEnv(detection.path)
 
     saveConfig({
@@ -163,11 +163,39 @@ export async function initializeGitBashOnStartup(): Promise<{
       }
     } as any)
 
-    console.log('[GitBash] Detected system Git Bash:', detection.path)
+    console.log('[GitBash] Detected Git Bash:', detection.path)
     return { available: true, needsSetup: false, mockMode: false, path: detection.path }
   }
 
-  // Case 4: Git Bash not found anywhere - needs setup
+  // Case 4: Git Bash not found - try offline installation from bundled resources
+  const { hasBundledGitBash, installBundledGitBash } = require('../services/git-bash.service')
+
+  if (hasBundledGitBash()) {
+    console.log('[GitBash] System Git Bash not found, attempting offline installation...')
+
+    const installResult = await installBundledGitBash()
+
+    if (installResult.success && installResult.path) {
+      // Offline installation succeeded
+      setGitBashPathEnv(installResult.path)
+
+      saveConfig({
+        gitBash: {
+          installed: true,
+          path: installResult.path,
+          skipped: false
+        }
+      } as any)
+
+      console.log('[GitBash] Offline installation completed:', installResult.path)
+      return { available: true, needsSetup: false, mockMode: false, path: installResult.path }
+    } else {
+      console.warn('[GitBash] Offline installation failed:', installResult.error)
+      // Fall through to needs setup
+    }
+  }
+
+  // Case 5: Git Bash not found anywhere and offline installation failed - needs setup
   console.log('[GitBash] Not found, setup required')
   return { available: false, needsSetup: true, mockMode: false, path: null, configCleared: true }
 }

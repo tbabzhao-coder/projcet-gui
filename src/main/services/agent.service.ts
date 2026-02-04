@@ -7,6 +7,7 @@ import { app, BrowserWindow } from 'electron'
 import { join, dirname } from 'path'
 import { existsSync, mkdirSync, symlinkSync, unlinkSync, lstatSync, readlinkSync, readFileSync, writeFileSync, readdirSync } from 'fs'
 import { getConfig, getTempSpacePath, onApiConfigChange } from './config.service'
+import { buildEnvWithBundledNode } from './node-runtime.service'
 import { getConversation, saveSessionId, addMessage, updateLastMessage } from './conversation.service'
 import { getSpace } from './space.service'
 import {
@@ -484,15 +485,13 @@ export async function ensureSessionWarm(
     cwd: workDir,
     abortController,  // Consistent with sendMessage
     env: {
-      ...process.env,
+      ...buildEnvWithBundledNode(process.env),
       ELECTRON_RUN_AS_NODE: 1,
       ELECTRON_NO_ATTACH_CONSOLE: 1,
       ANTHROPIC_API_KEY: anthropicApiKey,
       ANTHROPIC_BASE_URL: anthropicBaseUrl,
-      // Ensure localhost bypasses proxy
       NO_PROXY: 'localhost,127.0.0.1',
       no_proxy: 'localhost,127.0.0.1',
-      // Disable unnecessary API requests
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
       DISABLE_TELEMETRY: '1',
       DISABLE_COST_WARNINGS: '1'
@@ -777,14 +776,13 @@ export async function testMcpConnections(mainWindow?: BrowserWindow | null): Pro
           '--max-old-space-size=4096'  // Increase heap size to 4GB to prevent OOM on low-memory Windows machines
         ],
         env: {
-          ...process.env,
+          ...buildEnvWithBundledNode(process.env),
           ELECTRON_RUN_AS_NODE: '1',
           ELECTRON_NO_ATTACH_CONSOLE: '1',
           ANTHROPIC_API_KEY: anthropicApiKey,
           ANTHROPIC_BASE_URL: anthropicBaseUrl,
           NO_PROXY: 'localhost,127.0.0.1',
           no_proxy: 'localhost,127.0.0.1',
-          // Disable unnecessary API requests
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
           DISABLE_TELEMETRY: '1',
           DISABLE_COST_WARNINGS: '1'
@@ -1094,15 +1092,13 @@ export async function sendMessage(
       cwd: workDir,
       abortController: abortController,
       env: {
-        ...process.env,
+        ...buildEnvWithBundledNode(process.env),
         ELECTRON_RUN_AS_NODE: 1,
         ELECTRON_NO_ATTACH_CONSOLE: 1,
         ANTHROPIC_API_KEY: anthropicApiKey,
         ANTHROPIC_BASE_URL: anthropicBaseUrl,
-        // Ensure localhost bypasses proxy
         NO_PROXY: 'localhost,127.0.0.1',
         no_proxy: 'localhost,127.0.0.1',
-        // Disable unnecessary API requests
         CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
         DISABLE_TELEMETRY: '1',
         DISABLE_COST_WARNINGS: '1'

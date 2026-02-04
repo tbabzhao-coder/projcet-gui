@@ -31,6 +31,7 @@ import {
   calculateSkillsHash,
   calculateCredentialsHash
 } from './helpers'
+import { buildEnvWithBundledNode } from '../node-runtime.service'
 import { createCanUseTool } from './permission-handler'
 
 // ============================================
@@ -281,10 +282,10 @@ export async function ensureSessionWarm(
     cwd: workDir,
     abortController,  // Consistent with sendMessage
     env: {
-      // IMPORTANT: Spread process.env first, then override with our values
-      // This ensures our configured API key takes precedence over any system environment variables
-      // or Claude Code CLI configuration
-      ...process.env,
+      // IMPORTANT: Build env with bundled Node.js paths for Git Bash
+      // This sets both PATH and ORIGINAL_PATH to ensure Git Bash uses our bundled Node.js
+      // Git Bash's /etc/profile rebuilds PATH using ORIGINAL_PATH, so we must set both
+      ...buildEnvWithBundledNode(process.env),
       // Then override with our critical values (highest priority)
       ELECTRON_RUN_AS_NODE: 1,
       ELECTRON_NO_ATTACH_CONSOLE: 1,

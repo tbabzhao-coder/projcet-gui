@@ -37,6 +37,7 @@ Thumbs.db
 *.tmp
 *.temp
 .cache
+temp-wheels
 
 # Electron
 release
