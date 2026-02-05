@@ -275,14 +275,14 @@ function getBuiltInMcpServerPath(packageName: string): string | null {
 // - Cross-platform: automatically finds node in PATH
 function getBuiltInMcpServers(): Record<string, any> {
   const builtIn: Record<string, any> = {}
-  
+
   // Playwright MCP
   // Note: @playwright/mcp uses cli.js as the entry point (defined in package.json bin field)
   const playwrightBasePath = getBuiltInMcpServerPath('@playwright/mcp')
   if (playwrightBasePath) {
     // Use cli.js instead of index.js (bin entry point)
     const playwrightCliPath = playwrightBasePath.replace('index.js', 'cli.js')
-    
+
     // IMPORTANT: Use bundled Node.js if available, fallback to PATH
     // This ensures the config works across different environments:
     // - Development: bundled node if available, otherwise user's node
@@ -304,9 +304,25 @@ function getBuiltInMcpServers(): Record<string, any> {
     // We'll merge user's browserArgs with the default config later in getConfig()
     // For now, just set up the base configuration
 
+    // Build env with NODE_PATH for playwright-core resolution
+    // In production, playwright-core is in mcp-servers/playwright-core
+    const mcpEnv: Record<string, string> = {}
+    const isDev = !app.isPackaged || process.env.NODE_ENV === 'development'
+    if (!isDev) {
+      try {
+        const resourcesPath = process.resourcesPath
+        const mcpServersPath = join(resourcesPath, 'mcp-servers')
+        mcpEnv['NODE_PATH'] = mcpServersPath
+        console.log('[Config] Playwright MCP NODE_PATH:', mcpServersPath)
+      } catch (e) {
+        console.warn('[Config] Failed to set NODE_PATH for Playwright MCP:', e)
+      }
+    }
+
     builtIn['playwright'] = {
       command: nodeCommand,  // Use bundled Node.js or fallback to PATH
       args,  // Will be enhanced with browserArgs if user configured them
+      env: Object.keys(mcpEnv).length > 0 ? mcpEnv : undefined,
       disabled: false,
       __builtIn: true
     }

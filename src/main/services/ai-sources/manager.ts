@@ -276,6 +276,7 @@ class AISourceManager {
       url: config.url,
       model: config.model,
       hasKey: !!config.key,
+      keyPreview: config.key ? `${config.key.substring(0, 10)}...${config.key.substring(config.key.length - 10)}` : 'none',
       apiType: config.apiType
     })
 

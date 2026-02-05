@@ -188,6 +188,14 @@
           ]
         },
         {
+          "from": "node_modules/playwright-core",
+          "to": "mcp-servers/playwright-core",
+          "filter": [
+            "**/*",
+            "!**/.bin/**"
+          ]
+        },
+        {
           "from": "node_modules/@modelcontextprotocol",
           "to": "mcp-servers/@modelcontextprotocol",
           "filter": [
@@ -299,6 +307,14 @@
         {
           "from": "node_modules/@playwright/mcp",
           "to": "mcp-servers/@playwright/mcp",
+          "filter": [
+            "**/*",
+            "!**/.bin/**"
+          ]
+        },
+        {
+          "from": "node_modules/playwright-core",
+          "to": "mcp-servers/playwright-core",
           "filter": [
             "**/*",
             "!**/.bin/**"
