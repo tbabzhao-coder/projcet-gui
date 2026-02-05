@@ -230,11 +230,11 @@ export async function getApiCredentials(config: ReturnType<typeof getConfig>): P
     provider = 'oauth'
     console.log(`[AgentService] Using OAuth provider ${currentSource} via AISourceManager`)
   } else {
-    // Custom API - check provider from config (support both 'custom' and 'custom_xxx' formats)
-    const customConfig = aiSources?.[currentSource] || aiSources?.custom
-    provider = customConfig?.provider === 'openai' ? 'openai' : 'anthropic'
+    // Get current source from AISourceManager (handles both v1 and v2 config formats)
+    const currentSourceConfig = manager.getCurrentSourceConfig()
+    provider = currentSourceConfig?.provider === 'openai' ? 'openai' : 'anthropic'
     console.log(`[AgentService] Using custom API (${provider}) via AISourceManager`)
-    console.log(`[AgentService] Custom config provider field: ${customConfig?.provider}, source: ${currentSource}`)
+    console.log(`[AgentService] Current source provider field: ${currentSourceConfig?.provider}`)
   }
 
   const credentials = {

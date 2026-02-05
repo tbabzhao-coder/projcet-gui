@@ -490,6 +490,8 @@ export function SettingsPage() {
         apiKey,
         model,
         availableModels,
+        // Add apiType for OpenAI compatible providers
+        ...(provider === 'openai' ? { apiType: 'chat_completions' as const } : {}),
         createdAt: editingSourceId
           ? (aiSourcesV2.sources.find(s => s.id === editingSourceId)?.createdAt || now)
           : now,
