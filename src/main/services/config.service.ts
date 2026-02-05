@@ -185,25 +185,80 @@ function getBuiltInSkills(): SkillsConfig {
 
 // Check if a built-in MCP server package is available
 function getBuiltInMcpServerPath(packageName: string): string | null {
+  const isDev = !app.isPackaged || process.env.NODE_ENV === 'development'
+
+  // In production, check extraResources first (mcp-servers directory)
+  if (!isDev) {
+    try {
+      const resourcesPath = process.resourcesPath
+      const mcpServersPath = join(resourcesPath, 'mcp-servers', packageName)
+
+      // Try to find the main entry point
+      const packageJsonPath = join(mcpServersPath, 'package.json')
+      if (existsSync(packageJsonPath)) {
+        const pkg = require(packageJsonPath)
+
+        // Check if package has a main field
+        if (pkg.main) {
+          const mainPath = join(mcpServersPath, pkg.main)
+          if (existsSync(mainPath)) {
+            return mainPath
+          }
+        }
+
+        // Check if package has exports field
+        if (pkg.exports) {
+          if (typeof pkg.exports === 'string') {
+            const exportsPath = join(mcpServersPath, pkg.exports)
+            if (existsSync(exportsPath)) {
+              return exportsPath
+            }
+          } else if (pkg.exports['.']) {
+            const defaultExport = typeof pkg.exports['.'] === 'string'
+              ? pkg.exports['.']
+              : pkg.exports['.'].default
+            if (defaultExport) {
+              const exportsPath = join(mcpServersPath, defaultExport)
+              if (existsSync(exportsPath)) {
+                return exportsPath
+              }
+            }
+          }
+        }
+
+        // Fallback: try common paths
+        const commonPaths = [
+          join(mcpServersPath, 'dist', 'index.js'),
+          join(mcpServersPath, 'build', 'index.js'),
+          join(mcpServersPath, 'index.js')
+        ]
+
+        for (const path of commonPaths) {
+          if (existsSync(path)) {
+            return path
+          }
+        }
+      }
+    } catch (e) {
+      console.warn(`[Config] Failed to resolve MCP server from extraResources: ${packageName}`, e)
+    }
+  }
+
+  // Development mode or fallback: use require.resolve
   try {
-    // Try to resolve the package directly (works for packages with 'main' or 'exports' field)
     const packagePath = require.resolve(packageName)
     if (existsSync(packagePath)) {
       return packagePath
     }
   } catch (e) {
-    // Package not found via direct resolve, try alternative methods
+    // Package not found via direct resolve
   }
 
-  // For packages without 'main' field (like @modelcontextprotocol/server-*),
-  // try to resolve the package directory and construct the path
+  // Try to resolve package.json to get the package directory
   try {
-    // Try to resolve package.json to get the package directory
     const packageJsonPath = require.resolve(`${packageName}/package.json`)
     if (existsSync(packageJsonPath)) {
-      // Return the package directory path (remove /package.json)
       const packageDir = packageJsonPath.replace(/[\\\/]package\.json$/, '')
-      // Return a marker path that indicates the package exists
       return join(packageDir, 'dist', 'index.js')
     }
   } catch (e) {
@@ -324,21 +379,31 @@ function getBuiltInMcpServers(): Record<string, any> {
   // Filesystem MCP Server - Secure file operations
   const filesystemBasePath = getBuiltInMcpServerPath('@modelcontextprotocol/server-filesystem')
   if (filesystemBasePath) {
-    // Get the bin entry point from package.json
-    const filesystemBinPath = filesystemBasePath.replace(/[\\\/]dist[\\\/]index\.js$/, '/dist/index.js')
     const bundledNode = getBundledNodeExecutable()
-    const nodeCommand = bundledNode || 'node'
     const defaultAllowedPath = homedir()
 
+    // Use npx to run the MCP server, which handles module resolution correctly
+    // Windows: node.exe -> npx.cmd, Unix: bin/node -> bin/npx
+    let npxCommand: string
+    if (bundledNode) {
+      if (process.platform === 'win32') {
+        npxCommand = bundledNode.replace(/node\.exe$/, 'npx.cmd')
+      } else {
+        npxCommand = bundledNode.replace(/\/node$/, '/npx')
+      }
+    } else {
+      npxCommand = 'npx'
+    }
+
     builtIn['filesystem'] = {
-      command: nodeCommand,
-      args: [filesystemBinPath, defaultAllowedPath],
+      command: npxCommand,
+      args: ['@modelcontextprotocol/server-filesystem', defaultAllowedPath],
       disabled: false,
       __builtIn: true
     }
     console.log('[Config] Built-in Filesystem MCP server configured:')
-    console.log('  Command:', nodeCommand)
-    console.log('  Script:', filesystemBinPath)
+    console.log('  Command:', npxCommand)
+    console.log('  Package: @modelcontextprotocol/server-filesystem')
     console.log('  Allowed path:', defaultAllowedPath)
   } else {
     console.warn('[Config] @modelcontextprotocol/server-filesystem not found, filesystem MCP will not be available')
@@ -347,39 +412,62 @@ function getBuiltInMcpServers(): Record<string, any> {
   // Memory MCP Server - Knowledge graph-based persistent memory
   const memoryBasePath = getBuiltInMcpServerPath('@modelcontextprotocol/server-memory')
   if (memoryBasePath) {
-    // Get the bin entry point from package.json
-    const memoryBinPath = memoryBasePath.replace(/[\\\/]dist[\\\/]index\.js$/, '/dist/index.js')
     const bundledNode = getBundledNodeExecutable()
-    const nodeCommand = bundledNode || 'node'
+
+    // Use npx to run the MCP server, which handles module resolution correctly
+    // Windows: node.exe -> npx.cmd, Unix: bin/node -> bin/npx
+    let npxCommand: string
+    if (bundledNode) {
+      if (process.platform === 'win32') {
+        npxCommand = bundledNode.replace(/node\.exe$/, 'npx.cmd')
+      } else {
+        npxCommand = bundledNode.replace(/\/node$/, '/npx')
+      }
+    } else {
+      npxCommand = 'npx'
+    }
 
     builtIn['memory'] = {
-      command: nodeCommand,
-      args: [memoryBinPath],
+      command: npxCommand,
+      args: ['@modelcontextprotocol/server-memory'],
       disabled: false,
       __builtIn: true
     }
     console.log('[Config] Built-in Memory MCP server configured:')
-    console.log('  Command:', nodeCommand)
-    console.log('  Script:', memoryBinPath)
+    console.log('  Command:', npxCommand)
+    console.log('  Package: @modelcontextprotocol/server-memory')
   } else {
     console.warn('[Config] @modelcontextprotocol/server-memory not found, memory MCP will not be available')
   }
 
   // QuickChart MCP - Chart generation via QuickChart.io (bar, line, pie, radar, etc.)
-  // Bundled as dependency; run via node with resolved path (same pattern as filesystem/memory).
+  // Bundled as dependency; run via npx with package name
   const quickChartBasePath = getBuiltInMcpServerPath('quick-chart-mcp')
   if (quickChartBasePath) {
     const bundledNode = getBundledNodeExecutable()
-    const nodeCommand = bundledNode || 'node'
+
+    // Use npx to run the MCP server, which handles module resolution correctly
+    // Windows: node.exe -> npx.cmd, Unix: bin/node -> bin/npx
+    let npxCommand: string
+    if (bundledNode) {
+      if (process.platform === 'win32') {
+        npxCommand = bundledNode.replace(/node\.exe$/, 'npx.cmd')
+      } else {
+        npxCommand = bundledNode.replace(/\/node$/, '/npx')
+      }
+    } else {
+      npxCommand = 'npx'
+    }
+
     builtIn['quick-chart'] = {
-      command: nodeCommand,
-      args: [quickChartBasePath],
+      command: npxCommand,
+      args: ['quick-chart-mcp'],
       disabled: false,
       __builtIn: true
     }
     console.log('[Config] Built-in QuickChart MCP server configured:')
-    console.log('  Command:', nodeCommand)
-    console.log('  Script:', quickChartBasePath)
+    console.log('  Command:', npxCommand)
+    console.log('  Package: quick-chart-mcp')
   } else {
     console.warn('[Config] quick-chart-mcp not found, QuickChart MCP will not be available')
   }
@@ -766,11 +854,13 @@ export function getConfig(): AppConfig {
         const userMcpServers = parsed.mcpServers || DEFAULT_CONFIG.mcpServers
         for (const [name, userConfig] of Object.entries(userMcpServers)) {
           if (mcpServers[name] && (mcpServers[name] as any).__builtIn) {
-            // Merge user config with built-in (preserve browserArgs)
+            // For built-in servers, only merge user-configurable fields
+            // Do NOT override command and args (they should always be dynamically resolved)
+            const { command, args, __builtIn, ...userConfigFields } = userConfig as any
             mcpServers[name] = {
               ...mcpServers[name],
-              ...userConfig,
-              // Preserve __builtIn flag
+              ...userConfigFields,
+              // Preserve __builtIn flag and dynamically resolved command/args
               __builtIn: true
             }
           } else {

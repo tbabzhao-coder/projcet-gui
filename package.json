@@ -1,6 +1,6 @@
 {
   "name": "project4",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "AI-powered productivity assistant",
   "type": "module",
   "main": "./out/main/index.mjs",
@@ -150,55 +150,6 @@
     ],
     "extraResources": [
       {
-        "from": "resources/python-arm64",
-        "to": "python-arm64",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "resources/node-arm64",
-        "to": "node-arm64",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "resources/python-x64",
-        "to": "python-x64",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "resources/node-x64",
-        "to": "node-x64",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "resources/python-win-x64",
-        "to": "python-win-x64",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "resources/git-bash-win-x64",
-        "to": "git-bash-win-x64",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "resources/node-win-x64",
-        "to": "node-win-x64",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
         "from": "resources/skills",
         "to": "skills",
         "filter": [
@@ -213,19 +164,92 @@
       "hardenedRuntime": false,
       "gatekeeperAssess": false,
       "notarize": false,
+      "extraResources": [
+        {
+          "from": "resources/python-arm64",
+          "to": "python-arm64",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "resources/node-arm64",
+          "to": "node-arm64",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "node_modules/@playwright/mcp",
+          "to": "mcp-servers/@playwright/mcp",
+          "filter": [
+            "**/*",
+            "!**/.bin/**"
+          ]
+        },
+        {
+          "from": "node_modules/@modelcontextprotocol",
+          "to": "mcp-servers/@modelcontextprotocol",
+          "filter": [
+            "**/*",
+            "!**/.bin/**"
+          ]
+        },
+        {
+          "from": "node_modules/quick-chart-mcp",
+          "to": "mcp-servers/quick-chart-mcp",
+          "filter": [
+            "**/*",
+            "!**/.bin/**"
+          ]
+        },
+        {
+          "from": "node_modules/zod",
+          "to": "mcp-servers/zod",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "node_modules/zod-to-json-schema",
+          "to": "mcp-servers/zod-to-json-schema",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "node_modules/glob",
+          "to": "mcp-servers/glob",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "node_modules/diff",
+          "to": "mcp-servers/diff",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "node_modules/minimatch",
+          "to": "mcp-servers/minimatch",
+          "filter": [
+            "**/*"
+          ]
+        }
+      ],
       "target": [
         {
           "target": "dmg",
           "arch": [
-            "arm64",
-            "x64"
+            "arm64"
           ]
         },
         {
           "target": "zip",
           "arch": [
-            "arm64",
-            "x64"
+            "arm64"
           ]
         }
       ]
@@ -250,6 +274,88 @@
     },
     "win": {
       "icon": "resources/icon.ico",
+      "extraResources": [
+        {
+          "from": "resources/python-win-x64",
+          "to": "python-win-x64",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "resources/node-win-x64",
+          "to": "node-win-x64",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "resources/git-bash-win-x64",
+          "to": "git-bash-win-x64",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "node_modules/@playwright/mcp",
+          "to": "mcp-servers/@playwright/mcp",
+          "filter": [
+            "**/*",
+            "!**/.bin/**"
+          ]
+        },
+        {
+          "from": "node_modules/@modelcontextprotocol",
+          "to": "mcp-servers/@modelcontextprotocol",
+          "filter": [
+            "**/*",
+            "!**/.bin/**"
+          ]
+        },
+        {
+          "from": "node_modules/quick-chart-mcp",
+          "to": "mcp-servers/quick-chart-mcp",
+          "filter": [
+            "**/*",
+            "!**/.bin/**"
+          ]
+        },
+        {
+          "from": "node_modules/zod",
+          "to": "mcp-servers/zod",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "node_modules/zod-to-json-schema",
+          "to": "mcp-servers/zod-to-json-schema",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "node_modules/glob",
+          "to": "mcp-servers/glob",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "node_modules/diff",
+          "to": "mcp-servers/diff",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "node_modules/minimatch",
+          "to": "mcp-servers/minimatch",
+          "filter": [
+            "**/*"
+          ]
+        }
+      ],
       "target": [
         {
           "target": "nsis",
