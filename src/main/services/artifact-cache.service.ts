@@ -1,20 +1,25 @@
 /**
- * Artifact Cache Service - Manages file system cache with chokidar watcher
+ * Artifact Cache Service - Manages file system cache with native watcher
  *
  * Features:
  * - Per-space caching with lazy loading
- * - File system watching for incremental updates
+ * - Native file system watching (one OS-level handle per workspace)
+ * - .gitignore-aware filtering (no manual exclude list maintenance)
+ * - Batched event delivery with automatic debouncing
  * - Event-driven notifications to renderer
  * - Memory-efficient with LRU-style cleanup
  */
 
-import chokidar, { FSWatcher } from 'chokidar'
-import { join, extname, basename, dirname, relative } from 'path'
-import { promises as fs } from 'fs'
+import watcher from '@parcel/watcher'
+import type { AsyncSubscription, Event as WatcherEvent } from '@parcel/watcher'
+import ignore from 'ignore'
+import type { Ignore } from 'ignore'
+import { join, extname, basename, relative, sep } from 'path'
+import { promises as fs, readFileSync, Dirent } from 'fs'
 import { existsSync } from 'fs'
-import { BrowserWindow } from 'electron'
 import { getMainWindow } from '../index'
 import { broadcastToAll } from '../http/websocket'
+import { ALWAYS_IGNORE_DIRS, BASELINE_IGNORE_PATTERNS, CPP_LEVEL_IGNORE_DIRS } from '../../shared/constants/ignore-patterns'
 
 /**
  * Broadcast event to all clients (Electron IPC + WebSocket)
@@ -53,43 +58,11 @@ const FILE_ICON_IDS: Record<string, string> = {
   webp: 'image', ico: 'image', pdf: 'book', default: 'file-text'
 }
 
-// Hidden patterns - system junk files that should never be shown
+// Hidden patterns - system junk files that should never be shown in UI
 const HIDDEN_PATTERNS = [
   /\.DS_Store$/,      // macOS system file
   /Thumbs\.db$/,      // Windows thumbnail cache
   /desktop\.ini$/,    // Windows folder settings
-]
-
-// Watcher exclude patterns - directories NOT to watch for changes
-// These directories are still VISIBLE in the tree, but changes inside them
-// won't trigger file watcher events. User needs to manually refresh to see changes.
-// This prevents EMFILE (too many open files) errors from large directories.
-const WATCHER_EXCLUDE = [
-  // System junk (also hidden from display)
-  /\.DS_Store$/,
-  /Thumbs\.db$/,
-  /desktop\.ini$/,
-
-  // Large directories - exclude internals (VSCode style)
-  // Top-level directory is visible, but contents are not watched
-  /node_modules\/.+/,         // node_modules internals
-  /\.git\/objects/,           // .git/objects (large binary storage)
-  /\.git\/subtree-cache/,     // .git/subtree-cache
-  /\.hg\/store/,              // Mercurial store
-  /\.venv\/.+/,               // Python venv internals
-  /venv\/.+/,                 // Python venv internals (alternative name)
-  /\.pnpm\/.+/,               // pnpm store internals
-  /__pycache__/,              // Python bytecode cache
-  /\.pytest_cache/,           // pytest cache
-  /\.mypy_cache/,             // mypy cache
-  /\.tox/,                    // tox environments
-  /\.cache\/.+/,              // Generic cache directories
-  /\.turbo\/.+/,              // Turborepo cache
-  /\.next\/.+/,               // Next.js build cache
-  /\.nuxt\/.+/,               // Nuxt.js build cache
-  /dist\/.+/,                 // Build output internals
-  /build\/.+/,                // Build output internals
-  /coverage\/.+/,             // Test coverage reports
 ]
 
 /**
@@ -143,7 +116,8 @@ export interface ArtifactChangeEvent {
 interface SpaceCache {
   spaceId: string
   rootPath: string
-  watcher: FSWatcher | null
+  subscription: AsyncSubscription | null
+  ignoreFilter: Ignore | null
   // Cache for flat list (only top-level items for card view)
   flatItems: Map<string, CachedArtifact>
   // Cache for tree structure (with lazy-loaded children)
@@ -170,10 +144,21 @@ function getFileIconId(ext: string): string {
 }
 
 /**
- * Generate unique ID for artifacts
+ * Generate unique ID for artifacts using auto-increment counter.
+ * IDs are only used for React keys and in-memory references, not persisted.
  */
+let artifactIdCounter = 0
 function generateId(): string {
-  return `artifact-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  return `artifact-${++artifactIdCounter}`
+}
+
+/**
+ * Sort artifacts: folders first, then alphabetically by name
+ */
+function sortByName(a: CachedArtifact, b: CachedArtifact): number {
+  if (a.type === 'folder' && b.type !== 'folder') return -1
+  if (a.type !== 'folder' && b.type === 'folder') return 1
+  return a.name.localeCompare(b.name)
 }
 
 /**
@@ -192,6 +177,107 @@ function shouldHide(filePath: string): boolean {
   }
 
   return false
+}
+
+/**
+ * Check if path is a disk root directory.
+ * Disk roots are dangerous to scan/watch due to massive file counts.
+ */
+function isDiskRoot(path: string): boolean {
+  // Windows: C:\, D:\, etc.
+  if (/^[A-Z]:\\?$/i.test(path)) return true
+  // Unix root
+  if (path === '/') return true
+  // macOS volumes root: /Volumes/xxx (but not subdirectories)
+  if (/^\/Volumes\/[^/]+\/?$/.test(path)) return true
+  // Linux mount points
+  if (/^\/mnt\/[^/]+\/?$/.test(path)) return true
+  if (/^\/media\/[^/]+\/?$/.test(path)) return true
+  return false
+}
+
+// ============================================
+// .gitignore Integration
+// ============================================
+
+/**
+ * Build ignore rules for a workspace by stacking three layers:
+ *
+ *   1. ALWAYS_IGNORE_DIRS — VCS/app metadata (.git, .halo, etc.)
+ *   2. BASELINE_IGNORE_PATTERNS — common build/cache/dependency dirs, always active
+ *   3. Project .gitignore — additive, project-specific rules
+ *
+ * Layers are additive, not either/or. Duplicate rules are harmless.
+ */
+function loadIgnoreRules(rootPath: string): Ignore {
+  const ig = ignore()
+
+  // Layer 1: VCS/app metadata (also excluded at C++ level, added here for scan filtering)
+  ig.add(ALWAYS_IGNORE_DIRS)
+
+  // Layer 2: Baseline — always active regardless of .gitignore existence
+  ig.add(BASELINE_IGNORE_PATTERNS)
+
+  // Layer 3: Project .gitignore — additive on top of baseline
+  const rootGitignore = join(rootPath, '.gitignore')
+  if (existsSync(rootGitignore)) {
+    try {
+      const content = readFileSync(rootGitignore, 'utf-8')
+      ig.add(content)
+      console.log(`[ArtifactCache] Loaded .gitignore from ${rootPath}`)
+    } catch (error) {
+      console.warn(`[ArtifactCache] Failed to read .gitignore:`, error)
+    }
+  }
+
+  return ig
+}
+
+/**
+ * Check if a relative path should be ignored by .gitignore rules.
+ * Normalizes path separators for cross-platform compatibility.
+ * Optimized: only converts separators on Windows (where sep is '\\').
+ */
+function isIgnored(ig: Ignore, relativePath: string): boolean {
+  if (!relativePath || relativePath === '.') return false
+  // ignore lib expects forward slashes; only convert on Windows
+  const normalized = sep === '/' ? relativePath : relativePath.split(sep).join('/')
+  return ig.ignores(normalized)
+}
+
+// ============================================
+// File Operations
+// ============================================
+
+/**
+ * Create artifact from Dirent (zero stat calls).
+ * For initial scan, we use Dirent directly to avoid expensive fs.stat() calls.
+ * Size and timestamps are not available from Dirent, so they are omitted.
+ */
+function createArtifactFromDirent(
+  entry: Dirent,
+  dirPath: string,
+  rootPath: string,
+  spaceId: string
+): CachedArtifact {
+  const fullPath = join(dirPath, entry.name)
+  const ext = extname(entry.name)
+  const relativePath = relative(rootPath, fullPath)
+  const isDir = entry.isDirectory()
+
+  return {
+    id: generateId(),
+    spaceId,
+    name: entry.name,
+    type: isDir ? 'folder' : 'file',
+    path: fullPath,
+    relativePath,
+    extension: ext.replace('.', ''),
+    icon: isDir ? 'folder' : getFileIconId(ext),
+    // size, createdAt, modifiedAt omitted for performance (no stat call)
+    createdAt: '',
+    modifiedAt: ''
+  }
 }
 
 /**
@@ -228,46 +314,13 @@ async function createArtifact(
 }
 
 /**
- * Create tree node from file stats
- */
-async function createTreeNode(
-  fullPath: string,
-  rootPath: string,
-  depth: number
-): Promise<CachedTreeNode | null> {
-  try {
-    const stats = await fs.stat(fullPath)
-    const ext = extname(fullPath)
-    const name = basename(fullPath)
-    const relativePath = relative(rootPath, fullPath)
-    const isDir = stats.isDirectory()
-
-    return {
-      id: generateId(),
-      name,
-      type: isDir ? 'folder' : 'file',
-      path: fullPath,
-      relativePath,
-      extension: ext.replace('.', ''),
-      icon: isDir ? 'folder' : getFileIconId(ext),
-      size: stats.isFile() ? stats.size : undefined,
-      depth,
-      children: isDir ? [] : undefined,
-      childrenLoaded: false
-    }
-  } catch (error) {
-    console.error(`[ArtifactCache] Failed to create tree node for ${fullPath}:`, error)
-    return null
-  }
-}
-
-/**
- * Scan directory for immediate children only (async, non-blocking)
+ * Scan directory for immediate children only (sync from Dirent, zero stat calls)
  */
 async function scanDirectoryShallow(
   dirPath: string,
   rootPath: string,
-  spaceId: string
+  spaceId: string,
+  ig: Ignore | null = null
 ): Promise<CachedArtifact[]> {
   const startTime = performance.now()
   const artifacts: CachedArtifact[] = []
@@ -275,42 +328,33 @@ async function scanDirectoryShallow(
   try {
     const entries = await fs.readdir(dirPath, { withFileTypes: true })
 
-    // Process entries in parallel with concurrency limit
-    const CONCURRENCY = 50
-    for (let i = 0; i < entries.length; i += CONCURRENCY) {
-      const batch = entries.slice(i, i + CONCURRENCY)
-      const results = await Promise.all(
-        batch
-          .filter(entry => !shouldHide(entry.name))
-          .map(async entry => {
-            const fullPath = join(dirPath, entry.name)
-            return createArtifact(fullPath, rootPath, spaceId)
-          })
-      )
-
-      for (const artifact of results) {
-        if (artifact) {
-          artifacts.push(artifact)
-        }
+    // Filter and create artifacts synchronously (no stat calls)
+    for (const entry of entries) {
+      if (shouldHide(entry.name)) continue
+      if (ig) {
+        const entryRelative = relative(rootPath, join(dirPath, entry.name))
+        if (isIgnored(ig, entryRelative)) continue
       }
+      artifacts.push(createArtifactFromDirent(entry, dirPath, rootPath, spaceId))
     }
   } catch (error) {
     console.error(`[ArtifactCache] Failed to scan directory ${dirPath}:`, error)
   }
 
   const elapsed = performance.now() - startTime
-  console.log(`[ArtifactCache] ⏱️ scanDirectoryShallow: ${artifacts.length} items in ${elapsed.toFixed(1)}ms (path=${dirPath})`)
+  console.log(`[ArtifactCache] Scanned ${dirPath}: ${artifacts.length} items in ${elapsed.toFixed(2)}ms`)
 
   return artifacts
 }
 
 /**
- * Scan directory and return tree nodes (first level only)
+ * Scan directory and return tree nodes (first level only, zero stat calls)
  */
 async function scanDirectoryTreeShallow(
   dirPath: string,
   rootPath: string,
-  depth: number = 0
+  depth: number = 0,
+  ig: Ignore | null = null
 ): Promise<CachedTreeNode[]> {
   const startTime = performance.now()
   const nodes: CachedTreeNode[] = []
@@ -325,178 +369,219 @@ async function scanDirectoryTreeShallow(
       return a.name.localeCompare(b.name)
     })
 
-    // Process entries in parallel with concurrency limit
-    const CONCURRENCY = 50
-    for (let i = 0; i < entries.length; i += CONCURRENCY) {
-      const batch = entries.slice(i, i + CONCURRENCY)
-      const results = await Promise.all(
-        batch
-          .filter(entry => !shouldHide(entry.name))
-          .map(async entry => {
-            const fullPath = join(dirPath, entry.name)
-            return createTreeNode(fullPath, rootPath, depth)
-          })
-      )
-
-      for (const node of results) {
-        if (node) {
-          nodes.push(node)
-        }
+    // Filter and create nodes synchronously (no stat calls)
+    // Order is preserved because for...of is synchronous and continue doesn't change order
+    for (const entry of entries) {
+      if (shouldHide(entry.name)) continue
+      if (ig) {
+        const entryRelative = relative(rootPath, join(dirPath, entry.name))
+        if (isIgnored(ig, entryRelative)) continue
       }
+      nodes.push(createTreeNodeFromDirent(entry, dirPath, rootPath, depth))
     }
-
-    // Re-sort after parallel processing
-    nodes.sort((a, b) => {
-      if (a.type === 'folder' && b.type !== 'folder') return -1
-      if (a.type !== 'folder' && b.type === 'folder') return 1
-      return a.name.localeCompare(b.name)
-    })
+    // No re-sort needed: synchronous for-loop preserves sorted order from entries
 
   } catch (error) {
     console.error(`[ArtifactCache] Failed to scan tree ${dirPath}:`, error)
   }
 
   const elapsed = performance.now() - startTime
-  console.log(`[ArtifactCache] ⏱️ scanDirectoryTreeShallow: ${nodes.length} nodes in ${elapsed.toFixed(1)}ms (depth=${depth}, path=${dirPath})`)
+  console.log(`[ArtifactCache] Scanned tree ${dirPath}: ${nodes.length} nodes in ${elapsed.toFixed(2)}ms`)
 
   return nodes
 }
 
 /**
- * Initialize watcher for a space
+ * Create tree node from Dirent (zero stat calls).
  */
-function initWatcher(cache: SpaceCache): void {
-  if (cache.watcher) {
+function createTreeNodeFromDirent(
+  entry: Dirent,
+  dirPath: string,
+  rootPath: string,
+  depth: number
+): CachedTreeNode {
+  const fullPath = join(dirPath, entry.name)
+  const ext = extname(entry.name)
+  const relativePath = relative(rootPath, fullPath)
+  const isDir = entry.isDirectory()
+
+  return {
+    id: generateId(),
+    name: entry.name,
+    type: isDir ? 'folder' : 'file',
+    path: fullPath,
+    relativePath,
+    extension: ext.replace('.', ''),
+    icon: isDir ? 'folder' : getFileIconId(ext),
+    // size omitted for performance (no stat call)
+    depth,
+    children: isDir ? [] : undefined,
+    childrenLoaded: false
+  }
+}
+
+// ============================================
+// Native File Watcher (@parcel/watcher)
+// ============================================
+
+/**
+ * Map @parcel/watcher event type to our event type.
+ * Also detects directory vs file events.
+ */
+function mapEventType(event: WatcherEvent, isDir: boolean): ArtifactChangeEvent['type'] {
+  switch (event.type) {
+    case 'create':
+      return isDir ? 'addDir' : 'add'
+    case 'delete':
+      return isDir ? 'unlinkDir' : 'unlink'
+    case 'update':
+      return 'change'
+    default:
+      return 'change'
+  }
+}
+
+/**
+ * Initialize native file watcher for a space.
+ *
+ * Key differences from chokidar:
+ * - One OS-level handle for the entire directory tree (not one per subdirectory)
+ * - Events are batched and debounced by the native backend automatically
+ * - .gitignore rules are applied in JS on the batched events (not per-file)
+ * - No depth limit needed -- OS-level recursive watching has zero overhead
+ * - No polling, no awaitWriteFinish hacks -- pure native FS events
+ */
+async function initWatcher(cache: SpaceCache): Promise<void> {
+  if (cache.subscription) {
     return // Already initialized
   }
 
-  console.log(`[ArtifactCache] Initializing watcher for space: ${cache.spaceId} at ${cache.rootPath}`)
+  // Disk root detection - skip watcher to prevent system freeze
+  if (isDiskRoot(cache.rootPath)) {
+    console.warn(`[ArtifactCache] Disk root detected (${cache.rootPath}), skipping watcher initialization`)
+    return
+  }
 
-  const watcher = chokidar.watch(cache.rootPath, {
-    ignored: WATCHER_EXCLUDE,  // Use watcher-specific exclusions (not display filtering)
-    persistent: true,
-    ignoreInitial: true,  // Don't trigger events for existing files
-    depth: 10,            // Max depth for watching
-    awaitWriteFinish: {   // Wait for file writes to complete
-      stabilityThreshold: 300,
-      pollInterval: 100
-    },
-    // Performance optimizations
-    usePolling: false,    // Use native fs events when available
-    interval: 1000,       // Polling interval if polling is used
-    binaryInterval: 3000, // Polling interval for binary files
-  })
+  console.log(`[ArtifactCache] Initializing native watcher for space: ${cache.spaceId} at ${cache.rootPath}`)
 
-  // Handle file add
-  watcher.on('add', async (filePath) => {
-    console.log(`[ArtifactCache] File added: ${filePath}`)
-    const artifact = await createArtifact(filePath, cache.rootPath, cache.spaceId)
-    if (artifact) {
-      cache.flatItems.set(filePath, artifact)
-      emitChange({
-        type: 'add',
-        path: filePath,
-        relativePath: relative(cache.rootPath, filePath),
-        spaceId: cache.spaceId,
-        item: artifact
-      })
+  // Load .gitignore rules for this workspace
+  cache.ignoreFilter = loadIgnoreRules(cache.rootPath)
+
+  try {
+    const subscription = await watcher.subscribe(
+      cache.rootPath,
+      async (err, events) => {
+        if (err) {
+          console.error(`[ArtifactCache] Watcher error for ${cache.spaceId}:`, err)
+          return
+        }
+
+        // Filter events first
+        const filteredEvents = events.filter(event => {
+          const relativePath = relative(cache.rootPath, event.path)
+          if (cache.ignoreFilter && isIgnored(cache.ignoreFilter, relativePath)) {
+            return false
+          }
+          if (shouldHide(event.path)) {
+            return false
+          }
+          return true
+        })
+
+        if (filteredEvents.length === 0) return
+
+        // Group events by path to ensure same-path events are processed sequentially
+        const eventsByPath = new Map<string, WatcherEvent[]>()
+        for (const event of filteredEvents) {
+          const existing = eventsByPath.get(event.path) || []
+          existing.push(event)
+          eventsByPath.set(event.path, existing)
+        }
+
+        // Process different paths in parallel, same path events sequentially
+        await Promise.all(
+          Array.from(eventsByPath.entries()).map(async ([, pathEvents]) => {
+            // Process events for the same path sequentially to maintain order
+            for (const event of pathEvents) {
+              await processWatcherEvent(cache, event)
+            }
+          })
+        )
+      },
+      {
+        // @parcel/watcher ignore: paths matched in C++ layer, never reach JS.
+        // CPP_LEVEL_IGNORE_DIRS contains universally-safe directories that are
+        // NEVER user content (node_modules, __pycache__, .gradle, etc.).
+        // Project-specific ignoring is handled by .gitignore filter above.
+        ignore: CPP_LEVEL_IGNORE_DIRS.map(dir => join(cache.rootPath, dir))
+      }
+    )
+
+    cache.subscription = subscription
+    console.log(`[ArtifactCache] Native watcher active for space: ${cache.spaceId}`)
+  } catch (error) {
+    console.error(`[ArtifactCache] Failed to start native watcher for ${cache.spaceId}:`, error)
+
+    // Notify renderer about the degraded state
+    try {
+      const mainWindow = getMainWindow()
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('artifact:watcher-error', {
+          spaceId: cache.spaceId,
+          error: 'WATCHER_INIT_FAILED',
+          message: 'File watcher initialization failed. File changes will not be detected automatically.'
+        })
+      }
+    } catch (e) {
+      // Ignore notification errors
     }
-  })
+  }
+}
 
-  // Handle file change
-  watcher.on('change', async (filePath) => {
-    console.log(`[ArtifactCache] File changed: ${filePath}`)
-    const artifact = await createArtifact(filePath, cache.rootPath, cache.spaceId)
-    if (artifact) {
-      cache.flatItems.set(filePath, artifact)
-      emitChange({
-        type: 'change',
-        path: filePath,
-        relativePath: relative(cache.rootPath, filePath),
-        spaceId: cache.spaceId,
-        item: artifact
-      })
-    }
-  })
+/**
+ * Process a single watcher event and emit change notifications.
+ */
+async function processWatcherEvent(cache: SpaceCache, event: WatcherEvent): Promise<void> {
+  const { path: filePath, type: eventType } = event
+  const relativePath = relative(cache.rootPath, filePath)
 
-  // Handle file delete
-  watcher.on('unlink', (filePath) => {
-    console.log(`[ArtifactCache] File removed: ${filePath}`)
+  if (eventType === 'delete') {
+    // For deletes, we can't stat to check if it was a directory.
+    // Check if we had it cached as a directory, otherwise treat as file.
+    const wasCachedDir = cache.loadedDirs.has(filePath) ||
+      cache.flatItems.get(filePath)?.type === 'folder'
+
+    const changeType = wasCachedDir ? 'unlinkDir' : 'unlink'
+
     cache.flatItems.delete(filePath)
     cache.treeNodes.delete(filePath)
+    cache.loadedDirs.delete(filePath)
+
     emitChange({
-      type: 'unlink',
+      type: changeType,
       path: filePath,
-      relativePath: relative(cache.rootPath, filePath),
+      relativePath,
       spaceId: cache.spaceId
     })
+    return
+  }
+
+  // For create/update, stat the file to get metadata (watcher events need stat)
+  const artifact = await createArtifact(filePath, cache.rootPath, cache.spaceId)
+  if (!artifact) return
+
+  const isDir = artifact.type === 'folder'
+  const changeType = mapEventType(event, isDir)
+
+  cache.flatItems.set(filePath, artifact)
+
+  emitChange({
+    type: changeType,
+    path: filePath,
+    relativePath,
+    spaceId: cache.spaceId,
+    item: artifact
   })
-
-  // Handle directory add
-  watcher.on('addDir', async (dirPath) => {
-    // Skip root path
-    if (dirPath === cache.rootPath) return
-
-    console.log(`[ArtifactCache] Directory added: ${dirPath}`)
-    const artifact = await createArtifact(dirPath, cache.rootPath, cache.spaceId)
-    if (artifact) {
-      cache.flatItems.set(dirPath, artifact)
-      emitChange({
-        type: 'addDir',
-        path: dirPath,
-        relativePath: relative(cache.rootPath, dirPath),
-        spaceId: cache.spaceId,
-        item: artifact
-      })
-    }
-  })
-
-  // Handle directory delete
-  watcher.on('unlinkDir', (dirPath) => {
-    console.log(`[ArtifactCache] Directory removed: ${dirPath}`)
-    cache.flatItems.delete(dirPath)
-    cache.treeNodes.delete(dirPath)
-    cache.loadedDirs.delete(dirPath)
-    emitChange({
-      type: 'unlinkDir',
-      path: dirPath,
-      relativePath: relative(cache.rootPath, dirPath),
-      spaceId: cache.spaceId
-    })
-  })
-
-  // Handle errors - graceful degradation like VSCode
-  watcher.on('error', (error: NodeJS.ErrnoException) => {
-    console.error(`[ArtifactCache] Watcher error for ${cache.spaceId}:`, error)
-
-    // Handle EMFILE (too many open files) gracefully
-    if (error.code === 'EMFILE' || error.code === 'ENFILE') {
-      console.warn(`[ArtifactCache] ⚠️ Too many open files. Disabling file watcher for ${cache.spaceId}.`)
-      console.warn('[ArtifactCache] File changes will not be detected automatically. Manual refresh required.')
-
-      // Close the watcher to release file descriptors
-      if (cache.watcher) {
-        cache.watcher.close().catch(() => {})
-        cache.watcher = null
-      }
-
-      // Notify renderer about the degraded state
-      try {
-        const mainWindow = getMainWindow()
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('artifact:watcher-error', {
-            spaceId: cache.spaceId,
-            error: 'EMFILE',
-            message: 'Too many open files. File watcher disabled.'
-          })
-        }
-      } catch (e) {
-        // Ignore notification errors
-      }
-    }
-  })
-
-  cache.watcher = watcher
 }
 
 /**
@@ -534,7 +619,8 @@ export async function initSpaceCache(spaceId: string, rootPath: string): Promise
   const cache: SpaceCache = {
     spaceId,
     rootPath,
-    watcher: null,
+    subscription: null,
+    ignoreFilter: null,
     flatItems: new Map(),
     treeNodes: new Map(),
     loadedDirs: new Set(),
@@ -544,8 +630,8 @@ export async function initSpaceCache(spaceId: string, rootPath: string): Promise
   cacheMap.set(spaceId, cache)
 
   // Initialize watcher in background (don't block)
-  setImmediate(() => {
-    initWatcher(cache)
+  initWatcher(cache).catch(error => {
+    console.error(`[ArtifactCache] Background watcher init failed for ${spaceId}:`, error)
   })
 }
 
@@ -559,8 +645,10 @@ export async function ensureSpaceCache(spaceId: string, rootPath: string): Promi
     return
   }
 
-  if (!cache.watcher) {
-    setImmediate(() => initWatcher(cache))
+  if (!cache.subscription) {
+    initWatcher(cache).catch(error => {
+      console.error(`[ArtifactCache] Background watcher init failed for ${spaceId}:`, error)
+    })
   }
 }
 
@@ -573,11 +661,16 @@ export async function destroySpaceCache(spaceId: string): Promise<void> {
 
   console.log(`[ArtifactCache] Destroying cache for space: ${spaceId}`)
 
-  if (cache.watcher) {
-    await cache.watcher.close()
-    cache.watcher = null
+  if (cache.subscription) {
+    try {
+      await cache.subscription.unsubscribe()
+    } catch (error) {
+      console.error(`[ArtifactCache] Error unsubscribing watcher for ${spaceId}:`, error)
+    }
+    cache.subscription = null
   }
 
+  cache.ignoreFilter = null
   cache.flatItems.clear()
   cache.treeNodes.clear()
   cache.loadedDirs.clear()
@@ -596,6 +689,12 @@ export async function listArtifacts(
 ): Promise<CachedArtifact[]> {
   console.log(`[ArtifactCache] listArtifacts for space: ${spaceId}`)
 
+  // Disk root detection - degrade to prevent system freeze
+  if (isDiskRoot(rootPath)) {
+    console.warn(`[ArtifactCache] Disk root detected (${rootPath}), degrading to depth 0`)
+    maxDepth = 0
+  }
+
   // Ensure cache is initialized
   if (!cacheMap.has(spaceId)) {
     await initSpaceCache(spaceId, rootPath)
@@ -608,11 +707,16 @@ export async function listArtifacts(
   if (cache.flatItems.size > 0 && now - cache.lastUpdate < 5000) {
     console.log(`[ArtifactCache] Returning cached ${cache.flatItems.size} items`)
     return Array.from(cache.flatItems.values())
-      .sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime())
+      .sort((a, b) => sortByName(a, b))
   }
 
-  // Scan root directory
-  const artifacts = await scanDirectoryRecursive(rootPath, rootPath, spaceId, maxDepth, 0)
+  // Ensure .gitignore filter is loaded (may not be if watcher hasn't initialized yet)
+  if (!cache.ignoreFilter) {
+    cache.ignoreFilter = loadIgnoreRules(rootPath)
+  }
+
+  // Scan root directory with .gitignore filtering
+  const artifacts = await scanDirectoryRecursive(rootPath, rootPath, spaceId, maxDepth, 0, cache.ignoreFilter)
 
   // Update cache
   cache.flatItems.clear()
@@ -621,20 +725,20 @@ export async function listArtifacts(
   }
   cache.lastUpdate = now
 
-  return artifacts.sort((a, b) =>
-    new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime()
-  )
+  // Sort by name (folders first, then alphabetically) since timestamps are not available
+  return artifacts.sort((a, b) => sortByName(a, b))
 }
 
 /**
- * Recursively scan directory with depth limit (async)
+ * Recursively scan directory with depth limit (zero stat calls)
  */
 async function scanDirectoryRecursive(
   dirPath: string,
   rootPath: string,
   spaceId: string,
   maxDepth: number,
-  currentDepth: number
+  currentDepth: number,
+  ig: Ignore | null
 ): Promise<CachedArtifact[]> {
   if (currentDepth >= maxDepth || !existsSync(dirPath)) {
     return []
@@ -645,36 +749,30 @@ async function scanDirectoryRecursive(
   try {
     const entries = await fs.readdir(dirPath, { withFileTypes: true })
 
-    // Process in parallel with concurrency limit
-    const CONCURRENCY = 50
-    for (let i = 0; i < entries.length; i += CONCURRENCY) {
-      const batch = entries.slice(i, i + CONCURRENCY)
+    // Filter entries first
+    const filteredEntries = entries.filter(entry => {
+      if (shouldHide(entry.name)) return false
+      // Apply .gitignore filtering during scan to skip ignored subtrees entirely.
+      // This is critical for performance: without this, scanning recurses into
+      // directories like target/classes (Java) or node_modules (Node).
+      if (ig) {
+        const entryRelative = relative(rootPath, join(dirPath, entry.name))
+        if (isIgnored(ig, entryRelative)) return false
+      }
+      return true
+    })
 
-      const results = await Promise.all(
-        batch
-          .filter(entry => !shouldHide(entry.name))
-          .map(async entry => {
-            const fullPath = join(dirPath, entry.name)
-            const artifact = await createArtifact(fullPath, rootPath, spaceId)
+    // Create artifacts synchronously (no stat calls)
+    for (const entry of filteredEntries) {
+      artifacts.push(createArtifactFromDirent(entry, dirPath, rootPath, spaceId))
 
-            if (!artifact) return []
-
-            const items = [artifact]
-
-            // Recursively scan subdirectories
-            if (entry.isDirectory()) {
-              const subItems = await scanDirectoryRecursive(
-                fullPath, rootPath, spaceId, maxDepth, currentDepth + 1
-              )
-              items.push(...subItems)
-            }
-
-            return items
-          })
-      )
-
-      for (const items of results) {
-        artifacts.push(...items)
+      // Recursively scan subdirectories
+      if (entry.isDirectory()) {
+        const fullPath = join(dirPath, entry.name)
+        const subItems = await scanDirectoryRecursive(
+          fullPath, rootPath, spaceId, maxDepth, currentDepth + 1, ig
+        )
+        artifacts.push(...subItems)
       }
     }
   } catch (error) {
@@ -698,8 +796,13 @@ export async function listArtifactsTree(
     await initSpaceCache(spaceId, rootPath)
   }
 
-  // Scan root level only
-  return scanDirectoryTreeShallow(rootPath, rootPath, 0)
+  const cache = cacheMap.get(spaceId)!
+  if (!cache.ignoreFilter) {
+    cache.ignoreFilter = loadIgnoreRules(rootPath)
+  }
+
+  // Scan root level only, with .gitignore filtering
+  return scanDirectoryTreeShallow(rootPath, rootPath, 0, cache.ignoreFilter)
 }
 
 /**
@@ -712,21 +815,24 @@ export async function loadDirectoryChildren(
 ): Promise<CachedTreeNode[]> {
   console.log(`[ArtifactCache] Loading children for: ${dirPath}`)
 
-  const cache = cacheMap.get(spaceId)
+  let cache = cacheMap.get(spaceId)
   if (!cache) {
     await initSpaceCache(spaceId, rootPath)
+    cache = cacheMap.get(spaceId)!
+  }
+
+  if (!cache.ignoreFilter) {
+    cache.ignoreFilter = loadIgnoreRules(rootPath)
   }
 
   // Calculate depth based on relative path
   const relativePath = relative(rootPath, dirPath)
   const depth = relativePath ? relativePath.split(/[\\/]/).length : 0
 
-  const children = await scanDirectoryTreeShallow(dirPath, rootPath, depth + 1)
+  const children = await scanDirectoryTreeShallow(dirPath, rootPath, depth + 1, cache.ignoreFilter)
 
   // Mark directory as loaded
-  if (cache) {
-    cache.loadedDirs.add(dirPath)
-  }
+  cache.loadedDirs.add(dirPath)
 
   return children
 }
@@ -760,7 +866,7 @@ export function getCacheStats(spaceId: string): {
     flatItems: cache.flatItems.size,
     treeNodes: cache.treeNodes.size,
     loadedDirs: cache.loadedDirs.size,
-    watcherActive: cache.watcher !== null
+    watcherActive: cache.subscription !== null
   }
 }
 
@@ -772,6 +878,8 @@ export async function refreshCache(spaceId: string, rootPath: string): Promise<v
 
   const cache = cacheMap.get(spaceId)
   if (cache) {
+    // Reload .gitignore in case it changed
+    cache.ignoreFilter = loadIgnoreRules(rootPath)
     cache.flatItems.clear()
     cache.treeNodes.clear()
     cache.loadedDirs.clear()
