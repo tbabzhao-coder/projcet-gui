@@ -260,6 +260,7 @@ export function ChatHistoryPanel({
                     <p className={`text-sm font-medium truncate ${
                       conv.id === currentConversationId ? 'text-primary' : 'text-foreground'
                     }`}>
+                      {conv.id.startsWith('feishu-') && <span title="From Feishu">📱 </span>}
                       {conv.title || getConversationPreview(conv, t)}
                     </p>
                   )}

@@ -295,6 +295,34 @@ export function listConversations(spaceId: string): ConversationMeta[] {
   return metas
 }
 
+// Create a conversation with a specific ID (used by Feishu integration)
+export function createConversationWithId(spaceId: string, conversationId: string, title?: string): Conversation {
+  // Check if already exists
+  const existing = getConversation(spaceId, conversationId)
+  if (existing) return existing
+
+  const now = new Date().toISOString()
+  const conversation: Conversation = {
+    id: conversationId,
+    spaceId,
+    title: title || generateTitle(),
+    createdAt: now,
+    updatedAt: now,
+    messageCount: 0,
+    messages: []
+  }
+
+  const conversationsDir = getConversationsDir(spaceId)
+  if (!existsSync(conversationsDir)) {
+    mkdirSync(conversationsDir, { recursive: true })
+  }
+
+  writeFileSync(join(conversationsDir, `${conversationId}.json`), JSON.stringify(conversation, null, 2))
+  updateIndexEntry(conversationsDir, spaceId, conversationId, toMeta(conversation))
+
+  return conversation
+}
+
 // Create a new conversation
 export function createConversation(spaceId: string, title?: string): Conversation {
   const id = uuidv4()

@@ -268,6 +268,17 @@ export interface Project4API {
     extendedReadyAt: number
   }>>
   onBootstrapExtendedReady: (callback: (data: { timestamp: number; duration: number }) => void) => () => void
+
+  // Feishu Integration
+  feishuGetStatus: () => Promise<IpcResponse>
+  feishuSaveConfig: (config: {
+    enabled: boolean
+    appId: string
+    appSecret: string
+    domain: 'feishu' | 'lark'
+  }) => Promise<IpcResponse>
+  feishuStop: () => Promise<IpcResponse>
+  onFeishuStatusChange: (callback: (data: unknown) => void) => () => void
 }
 
 interface IpcResponse<T = unknown> {
@@ -484,6 +495,12 @@ const api: Project4API = {
   // Bootstrap lifecycle
   getBootstrapStatus: () => ipcRenderer.invoke('bootstrap:get-status'),
   onBootstrapExtendedReady: (callback) => createEventListener('bootstrap:extended-ready', callback as (data: unknown) => void),
+
+  // Feishu Integration
+  feishuGetStatus: () => ipcRenderer.invoke('feishu:get-status'),
+  feishuSaveConfig: (config) => ipcRenderer.invoke('feishu:save-config', config),
+  feishuStop: () => ipcRenderer.invoke('feishu:stop'),
+  onFeishuStatusChange: (callback) => createEventListener('feishu:status-change', callback),
 }
 
 contextBridge.exposeInMainWorld('project4', api)

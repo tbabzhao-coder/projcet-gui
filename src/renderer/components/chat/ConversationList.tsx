@@ -171,7 +171,10 @@ export function ConversationList({
             ) : (
               <>
                 <div className="flex items-center gap-2">
-                  {/* <MessageSquare className="w-4 h-4 text-blue-500 flex-shrink-0" /> */}
+                  {/* Feishu source indicator */}
+                  {conversation.id.startsWith('feishu-') && (
+                    <span className="flex-shrink-0 text-xs" title="From Feishu">📱</span>
+                  )}
                   <span className="text-sm truncate flex-1">
                     {conversation.title.slice(0, 20)}
                     {conversation.title.length > 20 && '...'}

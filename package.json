@@ -71,6 +71,7 @@
     "@codemirror/view": "^6.39.11",
     "@electron-toolkit/preload": "^3.0.0",
     "@electron-toolkit/utils": "^3.0.0",
+    "@larksuiteoapi/node-sdk": "^1.59.0",
     "@lezer/highlight": "^1.2.3",
     "@modelcontextprotocol/server-filesystem": "^2026.1.14",
     "@modelcontextprotocol/server-memory": "^2026.1.26",

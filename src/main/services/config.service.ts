@@ -608,6 +608,13 @@ interface AppConfig {
     path: string | null
     skipped: boolean
   }
+  // Feishu/Lark integration
+  feishu?: {
+    enabled: boolean
+    appId: string
+    appSecret: string
+    domain: 'feishu' | 'lark'
+  }
 }
 
 // MCP server configuration types
@@ -970,6 +977,10 @@ export function saveConfig(config: Partial<AppConfig>): AppConfig {
   // gitBash: replace entirely when provided (Windows only)
   if ((config as any).gitBash !== undefined) {
     (newConfig as any).gitBash = (config as any).gitBash
+  }
+  // feishu: replace entirely when provided
+  if ((config as any).feishu !== undefined) {
+    (newConfig as any).feishu = (config as any).feishu
   }
 
   const configPath = getConfigPath()
