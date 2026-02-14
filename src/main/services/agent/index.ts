@@ -91,7 +91,7 @@ export {
 // during the transition period
 
 export { createCanUseTool } from './permission-handler'
-export { getWorkingDir, getApiCredentials, sendToRenderer, syncSkillsToWorkDir, calculateSkillsHash, calculateCredentialsHash } from './helpers'
+export { getWorkingDir, getApiCredentials, sendToRenderer, syncSkillsToConfigDir, calculateSkillsHash, calculateCredentialsHash } from './helpers'
 export { parseSDKMessage, buildMessageContent, formatCanvasContext } from './message-utils'
 export { getOrCreateV2Session, activeSessions, v2Sessions } from './session-manager'
 export { broadcastMcpStatus } from './mcp-manager'

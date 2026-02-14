@@ -10,7 +10,7 @@ import { createHash } from 'crypto'
 import { app, BrowserWindow } from 'electron'
 import { join, dirname } from 'path'
 import { existsSync, mkdirSync, symlinkSync, unlinkSync, lstatSync, readlinkSync, cpSync, rmSync, readdirSync, renameSync, writeFileSync, readFileSync } from 'fs'
-import { getConfig, getConfigPath, getTempSpacePath } from '../config.service'
+import { getConfig, getConfigPath, getTempSpacePath, getClaudeConfigDir } from '../config.service'
 import { getSpace } from '../space.service'
 import { getAISourceManager } from '../ai-sources'
 import { broadcastToAll, broadcastToWebSocket } from '../../http/websocket'
@@ -421,91 +421,67 @@ export function broadcastToAllClients(channel: string, data: Record<string, unkn
 // ============================================
 
 /**
- * Create or update .claude/settings.json in workspace to override user's global settings
- * This ensures our configured API key takes precedence over ~/.claude/settings.json
- * 
- * CRITICAL: This function creates a project-level settings.json that will be used
- * when settingSources: ['project'] is set in SDK options. This prevents the SDK
- * from reading ~/.claude/settings.json which may contain globally configured Claude Code API keys.
+ * Create or update settings.json in the isolated claude-config directory.
+ * CLAUDE_CONFIG_DIR points the CLI subprocess here, so it never touches ~/.claude/.
+ *
+ * This replaces the old ensureWorkspaceSettings() which wrote to <workspace>/.claude/settings.json.
  */
-export function ensureWorkspaceSettings(workDir: string, apiKey: string, baseUrl: string): void {
-  const claudeDir = join(workDir, '.claude')
-  const settingsFile = join(claudeDir, 'settings.json')
-  
-  // Check if user's global settings.json exists (for logging/debugging)
-  const userHome = process.env.HOME || process.env.USERPROFILE
-  const userSettingsFile = userHome ? join(userHome, '.claude', 'settings.json') : null
-  if (userSettingsFile && existsSync(userSettingsFile)) {
-    try {
-      const userContent = readFileSync(userSettingsFile, 'utf-8')
-      const userSettings = JSON.parse(userContent)
-      if (userSettings.anthropicApiKey) {
-        console.log(`[Agent] ⚠️  WARNING: User's global ~/.claude/settings.json exists with API key`)
-        console.log(`[Agent]   Global API key (first 10 chars): ${userSettings.anthropicApiKey.substring(0, 10)}...`)
-        console.log(`[Agent]   This will be IGNORED because we use settingSources: ['project']`)
-      }
-    } catch (e) {
-      // Ignore errors reading user settings
-    }
+export function ensureClaudeConfigSettings(apiKey: string, baseUrl: string): void {
+  const configDir = getClaudeConfigDir()
+
+  // Create claude-config directory if it doesn't exist
+  if (!existsSync(configDir)) {
+    mkdirSync(configDir, { recursive: true })
   }
-  
-  // Create .claude directory if it doesn't exist
-  if (!existsSync(claudeDir)) {
-    mkdirSync(claudeDir, { recursive: true })
-  }
-  
-  // Read existing workspace settings if any
+
+  const settingsFile = join(configDir, 'settings.json')
+
+  // Read existing settings if any
   let settings: Record<string, any> = {}
   if (existsSync(settingsFile)) {
     try {
       const content = readFileSync(settingsFile, 'utf-8')
       settings = JSON.parse(content)
-      console.log(`[Agent] Found existing workspace settings.json, updating...`)
     } catch (e) {
       console.warn(`[Agent] Failed to read existing settings.json: ${e}`)
     }
   }
-  
-  // Override API key and base URL to ensure our configuration is used
-  // This will completely override any values from user's global settings
+
+  // Override API key and base URL
   settings.anthropicApiKey = apiKey
   settings.anthropicBaseUrl = baseUrl
-  
-  // Write settings file
+
   writeFileSync(settingsFile, JSON.stringify(settings, null, 2))
   console.log(`[Agent] ========================================`)
-  console.log(`[Agent] Workspace settings.json created/updated:`)
+  console.log(`[Agent] Claude config settings.json updated:`)
   console.log(`[Agent]   File: ${settingsFile}`)
   console.log(`[Agent]   API Key (first 10 chars): ${apiKey.substring(0, 10)}...`)
   console.log(`[Agent]   Base URL: ${baseUrl}`)
-  console.log(`[Agent]   This will override any global ~/.claude/settings.json`)
+  console.log(`[Agent]   CLAUDE_CONFIG_DIR isolation active`)
   console.log(`[Agent] ========================================`)
 }
 
 /**
- * Sync skills to global ~/.claude/skills/ directory
- * SDK loads skills from ~/.claude/skills/ when settingSources includes 'user'
- * This avoids copying skills to every workspace
+ * Sync all enabled skills to the isolated claude-config/skills/ directory.
+ * CLI discovers skills from CLAUDE_CONFIG_DIR/skills/ when settingSources includes 'user'.
+ *
+ * Unlike the old syncSkillsToWorkDir(), this syncs ALL enabled skills (built-in + user-imported),
+ * not just __builtIn ones. User-imported skills are copied here so the CLI can discover them
+ * without relying on the original import path.
+ *
  * IMPORTANT: SDK requires skill file to be named SKILL.md (uppercase)
  */
-export function syncSkillsToWorkDir(spaceId: string, skills: Record<string, any>): void {
-  // Use global ~/.claude/skills/ directory instead of workspace-specific
-  const userHome = process.env.HOME || process.env.USERPROFILE
-  if (!userHome) {
-    console.warn('[Agent] Cannot determine user home directory, skipping skills sync')
-    return
+export function syncSkillsToConfigDir(skills: Record<string, any>): void {
+  const configSkillsDir = join(getClaudeConfigDir(), 'skills')
+
+  // Create skills directory if it doesn't exist
+  if (!existsSync(configSkillsDir)) {
+    mkdirSync(configSkillsDir, { recursive: true })
   }
 
-  const globalClaudeSkillsDir = join(userHome, '.claude', 'skills')
-
-  // Create ~/.claude/skills/ directory if it doesn't exist
-  if (!existsSync(globalClaudeSkillsDir)) {
-    mkdirSync(globalClaudeSkillsDir, { recursive: true })
-  }
-
-  // Get list of enabled skills (only built-in skills, user-imported skills are already in their own locations)
+  // Get all enabled skills (both built-in and user-imported)
   const enabledSkills = Object.entries(skills).filter(([_, config]: [string, any]) =>
-    !config.disabled && config.path && existsSync(config.path) && (config as any).__builtIn
+    !config.disabled && config.path && existsSync(config.path)
   )
 
   if (enabledSkills.length === 0) {
@@ -513,66 +489,58 @@ export function syncSkillsToWorkDir(spaceId: string, skills: Record<string, any>
   }
 
   console.log(`[Agent] ========================================`)
-  console.log(`[Agent] Syncing ${enabledSkills.length} built-in skills to global directory`)
-  console.log(`[Agent] Target: ${globalClaudeSkillsDir}`)
-  console.log(`[Agent] Built-in skills:`, enabledSkills.map(([name]) => name).join(', '))
+  console.log(`[Agent] Syncing ${enabledSkills.length} skills to claude-config directory`)
+  console.log(`[Agent] Target: ${configSkillsDir}`)
+  console.log(`[Agent] Skills:`, enabledSkills.map(([name]) => name).join(', '))
 
   for (const [name, config] of enabledSkills) {
     const sourcePath = config.path
-    const targetPath = join(globalClaudeSkillsDir, name)
+    const targetPath = join(configSkillsDir, name)
 
     try {
-      // Check if skill already exists and is up-to-date (avoid unnecessary copies)
-      let needsSync = true
+      // For built-in skills, skip if already synced (they don't change unless app is updated)
+      if (config.__builtIn && existsSync(targetPath)) {
+        console.log(`[Agent] ✓ Built-in skill "${name}" already exists, skipping`)
+        continue
+      }
+
+      // Remove existing skill if present (user-imported skills may have changed)
       if (existsSync(targetPath)) {
-        // For built-in skills, we can skip sync if target already exists
-        // (built-in skills don't change unless app is updated)
-        needsSync = false
+        rmSync(targetPath, { recursive: true, force: true })
       }
 
-      if (needsSync) {
-        // Remove existing skill if present
-        if (existsSync(targetPath)) {
-          rmSync(targetPath, { recursive: true, force: true })
-        }
+      if (config.type === 'directory') {
+        // Copy entire directory
+        cpSync(sourcePath, targetPath, { recursive: true })
 
-        if (config.type === 'directory') {
-          // Copy entire directory
-          cpSync(sourcePath, targetPath, { recursive: true })
-
-          // CRITICAL: Ensure skill file is named SKILL.md (uppercase)
-          // SDK only recognizes SKILL.md (not skill.md, .skill.md, or other variants)
-          const files = readdirSync(targetPath)
-          for (const file of files) {
-            const lower = file.toLowerCase()
-            // Find skill file (case-insensitive, supports .skill.md and skill.md)
-            if (lower === 'skill.md' || lower === '.skill.md' || lower.endsWith('.skill.md')) {
-              const oldPath = join(targetPath, file)
-              const newPath = join(targetPath, 'SKILL.md')
-              if (file !== 'SKILL.md') {
-                renameSync(oldPath, newPath)
-                console.log(`[Agent] Renamed ${file} -> SKILL.md in skill "${name}"`)
-              }
-              break
+        // CRITICAL: Ensure skill file is named SKILL.md (uppercase)
+        const files = readdirSync(targetPath)
+        for (const file of files) {
+          const lower = file.toLowerCase()
+          if (lower === 'skill.md' || lower === '.skill.md' || lower.endsWith('.skill.md')) {
+            const oldPath = join(targetPath, file)
+            const newPath = join(targetPath, 'SKILL.md')
+            if (file !== 'SKILL.md') {
+              renameSync(oldPath, newPath)
+              console.log(`[Agent] Renamed ${file} -> SKILL.md in skill "${name}"`)
             }
+            break
           }
-        } else {
-          // For single file, create directory and copy file as SKILL.md (uppercase)
-          mkdirSync(targetPath, { recursive: true })
-          const targetFile = join(targetPath, 'SKILL.md')  // Always use SKILL.md
-          cpSync(sourcePath, targetFile)
         }
-
-        console.log(`[Agent] ✓ Synced built-in skill "${name}" to global directory`)
       } else {
-        console.log(`[Agent] ✓ Built-in skill "${name}" already exists in global directory`)
+        // For single file, create directory and copy file as SKILL.md
+        mkdirSync(targetPath, { recursive: true })
+        const targetFile = join(targetPath, 'SKILL.md')
+        cpSync(sourcePath, targetFile)
       }
+
+      console.log(`[Agent] ✓ Synced skill "${name}" to claude-config directory`)
     } catch (error) {
       console.error(`[Agent] ✗ Failed to sync skill ${name}:`, error)
     }
   }
 
-  console.log(`[Agent] Skills sync complete. SDK will load from: ${globalClaudeSkillsDir}`)
+  console.log(`[Agent] Skills sync complete. CLI will load from: ${configSkillsDir}`)
   console.log(`[Agent] ========================================`)
 }
 

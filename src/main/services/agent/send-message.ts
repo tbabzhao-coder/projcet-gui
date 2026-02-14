@@ -10,7 +10,7 @@
  */
 
 import { BrowserWindow } from 'electron'
-import { getConfig } from '../config.service'
+import { getConfig, getClaudeConfigDir } from '../config.service'
 import { getConversation, saveSessionId, addMessage, updateLastMessage } from '../conversation.service'
 import { ensureOpenAICompatRouter, encodeBackendConfig } from '../../openai-compat-router'
 import {
@@ -37,10 +37,10 @@ import {
   inferOpenAIWireApi,
   sendToRenderer,
   setMainWindow,
-  syncSkillsToWorkDir,
+  syncSkillsToConfigDir,
   calculateSkillsHash,
   calculateCredentialsHash,
-  ensureWorkspaceSettings
+  ensureClaudeConfigSettings
 } from './helpers'
 import {
   getOrCreateV2Session,
@@ -149,9 +149,9 @@ export async function sendMessage(
     console.log(`[Agent] ========================================`)
   }
 
-  // Ensure workspace settings.json overrides user's global settings
-  // This prevents SDK from using API key from ~/.claude/settings.json
-  ensureWorkspaceSettings(workDir, anthropicApiKey, anthropicBaseUrl)
+  // Write settings.json to isolated claude-config directory
+  // CLAUDE_CONFIG_DIR env var points CLI here, so it never touches ~/.claude/
+  ensureClaudeConfigSettings(anthropicApiKey, anthropicBaseUrl)
 
   // Get conversation for session resumption
   const conversation = getConversation(spaceId, conversationId)
@@ -201,13 +201,23 @@ export async function sendMessage(
         let baseEnv = buildEnvWithBundledNode(process.env)
         baseEnv = buildEnvWithBundledPython(baseEnv)
 
+        // Clean inherited ANTHROPIC_* and CLAUDE_* variables to prevent leakage
+        // from the parent process into the CLI subprocess
+        const cleanedEnv: Record<string, any> = {}
+        for (const [key, value] of Object.entries(baseEnv)) {
+          if (key.startsWith('ANTHROPIC_') || key.startsWith('CLAUDE_')) continue
+          cleanedEnv[key] = value
+        }
+
         const env = {
-          ...baseEnv,
+          ...cleanedEnv,
           // Override with our critical values (highest priority)
           ELECTRON_RUN_AS_NODE: 1,
           ELECTRON_NO_ATTACH_CONSOLE: 1,
           ANTHROPIC_API_KEY: anthropicApiKey,  // Our configured API key (overrides system)
           ANTHROPIC_BASE_URL: anthropicBaseUrl,
+          // Point CLI to our isolated config directory (never touches ~/.claude/)
+          CLAUDE_CONFIG_DIR: getClaudeConfigDir(),
           // Ensure localhost bypasses proxy
           NO_PROXY: 'localhost,127.0.0.1',
           no_proxy: 'localhost,127.0.0.1',
@@ -243,10 +253,8 @@ export async function sendMessage(
       // Disable WebSearch and WebFetch tools
       disallowedTools: ['WebSearch', 'WebFetch'],
       // Load both user and project settings
-      // - 'user': Load global skills from ~/.claude/skills/ (no need to copy to each workspace)
+      // - 'user': Load skills from CLAUDE_CONFIG_DIR/skills/ (our isolated config directory)
       // - 'project': Load workspace settings and skills from <workspace>/.claude/
-      // Project settings take precedence, so our API key in workspace settings.json will override
-      // any global API key in ~/.claude/settings.json
       settingSources: ['user', 'project'],
       permissionMode: 'acceptEdits' as const,
       canUseTool: createCanUseTool(workDir, spaceId, conversationId),
@@ -289,11 +297,11 @@ export async function sendMessage(
       console.log(`[Agent][${conversationId}] MCP servers configured: ${mcpServerNames.join(', ')}`)
     }
 
-    // Sync skills to .claude/skills/ directory before creating session
-    // SDK loads skills from .claude/skills/, so we need to copy imported skills there
+    // Sync skills to claude-config/skills/ directory before creating session
+    // CLI loads skills from CLAUDE_CONFIG_DIR/skills/
     if (config.skills && Object.keys(config.skills).length > 0) {
       console.log(`[Agent][${conversationId}] Skills configured:`, Object.keys(config.skills).join(', '))
-      syncSkillsToWorkDir(spaceId, config.skills)
+      syncSkillsToConfigDir(config.skills)
     } else {
       console.log(`[Agent][${conversationId}] No skills configured`)
     }

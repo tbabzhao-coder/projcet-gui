@@ -9,7 +9,7 @@
  */
 
 import { unstable_v2_createSession } from '@anthropic-ai/claude-agent-sdk'
-import { getConfig, onApiConfigChange } from '../config.service'
+import { getConfig, onApiConfigChange, getClaudeConfigDir } from '../config.service'
 import { getConversation } from '../conversation.service'
 import { ensureOpenAICompatRouter, encodeBackendConfig } from '../../openai-compat-router'
 import type {
@@ -26,8 +26,8 @@ import {
   getEnabledMcpServers,
   buildSystemPromptAppend,
   inferOpenAIWireApi,
-  ensureWorkspaceSettings,
-  syncSkillsToWorkDir,
+  ensureClaudeConfigSettings,
+  syncSkillsToConfigDir,
   calculateSkillsHash,
   calculateCredentialsHash
 } from './helpers'
@@ -274,9 +274,9 @@ export async function ensureSessionWarm(
     console.log(`[Agent] ${credentials.provider} provider enabled (warm): routing via ${anthropicBaseUrl}, apiType=${apiType}`)
   }
 
-  // Ensure workspace settings.json overrides user's global settings
-  // This prevents SDK from using API key from ~/.claude/settings.json
-  ensureWorkspaceSettings(workDir, anthropicApiKey, anthropicBaseUrl)
+  // Write settings.json to isolated claude-config directory
+  // CLAUDE_CONFIG_DIR env var points CLI here, so it never touches ~/.claude/
+  ensureClaudeConfigSettings(anthropicApiKey, anthropicBaseUrl)
 
   const sdkOptions: Record<string, any> = {
     model: sdkModel,
@@ -289,13 +289,23 @@ export async function ensureSessionWarm(
       let baseEnv = buildEnvWithBundledNode(process.env)
       baseEnv = buildEnvWithBundledPython(baseEnv)
 
+      // Clean inherited ANTHROPIC_* and CLAUDE_* variables to prevent leakage
+      // from the parent process into the CLI subprocess
+      const cleanedEnv: Record<string, any> = {}
+      for (const [key, value] of Object.entries(baseEnv)) {
+        if (key.startsWith('ANTHROPIC_') || key.startsWith('CLAUDE_')) continue
+        cleanedEnv[key] = value
+      }
+
       return {
-        ...baseEnv,
+        ...cleanedEnv,
         // Then override with our critical values (highest priority)
         ELECTRON_RUN_AS_NODE: 1,
         ELECTRON_NO_ATTACH_CONSOLE: 1,
         ANTHROPIC_API_KEY: anthropicApiKey,  // Our configured API key (overrides system)
         ANTHROPIC_BASE_URL: anthropicBaseUrl,
+        // Point CLI to our isolated config directory (never touches ~/.claude/)
+        CLAUDE_CONFIG_DIR: getClaudeConfigDir(),
         // Ensure localhost bypasses proxy
         NO_PROXY: 'localhost,127.0.0.1',
         no_proxy: 'localhost,127.0.0.1',
@@ -321,10 +331,8 @@ export async function ensureSessionWarm(
     // Disable WebSearch and WebFetch tools
     disallowedTools: ['WebSearch', 'WebFetch'],
     // Load both user and project settings
-    // - 'user': Load global skills from ~/.claude/skills/ (no need to copy to each workspace)
+    // - 'user': Load skills from CLAUDE_CONFIG_DIR/skills/ (our isolated config directory)
     // - 'project': Load workspace settings and skills from <workspace>/.claude/
-    // Project settings take precedence, so our API key in workspace settings.json will override
-    // any global API key in ~/.claude/settings.json
     settingSources: ['user', 'project'],
     permissionMode: 'acceptEdits' as const,
     canUseTool: createCanUseTool(workDir, spaceId, conversationId),  // Consistent with sendMessage
@@ -341,11 +349,10 @@ export async function ensureSessionWarm(
     })())
   }
 
-  // Sync skills to .claude/skills/ directory before creating session
+  // Sync skills to claude-config/skills/ directory before creating session
   if (config.skills && Object.keys(config.skills).length > 0) {
     console.log(`[Agent][${conversationId}] Skills configured (warm):`, Object.keys(config.skills).join(', '))
-    // Import at the top of the file instead of dynamic require
-    syncSkillsToWorkDir(spaceId, config.skills)
+    syncSkillsToConfigDir(config.skills)
   } else {
     console.log(`[Agent][${conversationId}] No skills configured (warm)`)
   }

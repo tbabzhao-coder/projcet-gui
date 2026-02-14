@@ -684,6 +684,20 @@ export function getSpacesDir(): string {
   return join(getProject4Dir(), 'spaces')
 }
 
+/**
+ * Get the isolated claude-config directory for CLI subprocess.
+ * Setting CLAUDE_CONFIG_DIR to this path ensures the CLI never reads/writes ~/.claude/,
+ * preventing pollution of the user's own Claude Code CLI configuration.
+ *
+ * Structure:
+ *   <project4Dir>/claude-config/
+ *   ├── settings.json        ← API key, sandbox config
+ *   └── skills/              ← All skills (built-in + user-imported)
+ */
+export function getClaudeConfigDir(): string {
+  return join(getProject4Dir(), 'claude-config')
+}
+
 // Default model
 const DEFAULT_MODEL = ''
 
