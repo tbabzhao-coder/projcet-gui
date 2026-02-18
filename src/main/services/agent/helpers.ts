@@ -10,7 +10,7 @@ import { createHash } from 'crypto'
 import { app, BrowserWindow } from 'electron'
 import { join, dirname } from 'path'
 import { existsSync, mkdirSync, symlinkSync, unlinkSync, lstatSync, readlinkSync, cpSync, rmSync, readdirSync, renameSync, writeFileSync, readFileSync } from 'fs'
-import { getConfig, getConfigPath, getTempSpacePath } from '../config.service'
+import { getConfig, getConfigPath, getTempSpacePath, getClaudeConfigDir } from '../config.service'
 import { getSpace } from '../space.service'
 import { getAISourceManager } from '../ai-sources'
 import { broadcastToAll, broadcastToWebSocket } from '../../http/websocket'
@@ -431,7 +431,6 @@ export function broadcastToAllClients(channel: string, data: Record<string, unkn
  * IMPORTANT: SDK requires skill file to be named SKILL.md (uppercase)
  */
 export function syncSkillsToConfigDir(skills: Record<string, any>): void {
-  const { getClaudeConfigDir } = require('../config.service')
   const configSkillsDir = join(getClaudeConfigDir(), 'skills')
 
   // Create skills directory if it doesn't exist
