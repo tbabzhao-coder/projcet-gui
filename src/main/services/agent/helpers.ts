@@ -451,12 +451,26 @@ export function ensureClaudeConfigSettings(apiKey: string, baseUrl: string): voi
   settings.anthropicApiKey = apiKey
   settings.anthropicBaseUrl = baseUrl
 
+  // Add sandbox configuration (performance optimization + avoid tmpdir temp files)
+  // This prevents CLI from creating temp files in $TMPDIR which can cause chokidar
+  // to watch the entire tmpdir and crash on macOS (Unix socket files like CloudClient)
+  settings.sandbox = {
+    enabled: true,
+    autoAllowBashIfSandboxed: true,
+    network: {
+      allowedDomains: ['*'],        // Allow all domains
+      allowAllUnixSockets: true,    // Allow Docker, databases, etc.
+      allowLocalBinding: true       // Allow starting local servers
+    }
+  }
+
   writeFileSync(settingsFile, JSON.stringify(settings, null, 2))
   console.log(`[Agent] ========================================`)
   console.log(`[Agent] Claude config settings.json updated:`)
   console.log(`[Agent]   File: ${settingsFile}`)
   console.log(`[Agent]   API Key (first 10 chars): ${apiKey.substring(0, 10)}...`)
   console.log(`[Agent]   Base URL: ${baseUrl}`)
+  console.log(`[Agent]   Sandbox: enabled (performance + avoid tmpdir)`)
   console.log(`[Agent]   CLAUDE_CONFIG_DIR isolation active`)
   console.log(`[Agent] ========================================`)
 }
