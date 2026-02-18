@@ -11,7 +11,6 @@
 import { unstable_v2_createSession } from '@anthropic-ai/claude-agent-sdk'
 import { getConfig, onApiConfigChange, getClaudeConfigDir } from '../config.service'
 import { getConversation } from '../conversation.service'
-import { ensureOpenAICompatRouter, encodeBackendConfig } from '../../openai-compat-router'
 import type {
   V2SDKSession,
   V2SessionInfo,
@@ -24,16 +23,14 @@ import {
   getWorkingDir,
   getApiCredentials,
   getEnabledMcpServers,
-  buildSystemPromptAppend,
-  inferOpenAIWireApi,
-  ensureClaudeConfigSettings,
   syncSkillsToConfigDir,
   calculateSkillsHash,
   calculateCredentialsHash
 } from './helpers'
-import { buildEnvWithBundledNode } from '../node-runtime.service'
-import { buildEnvWithBundledPython } from '../python-runtime.service'
-import { createCanUseTool } from './permission-handler'
+import {
+  resolveCredentialsForSdk,
+  buildBaseSdkOptions
+} from './sdk-config'
 
 // ============================================
 // Session Maps
@@ -244,110 +241,29 @@ export async function ensureSessionWarm(
   // Create abortController - consistent with sendMessage
   const abortController = new AbortController()
 
-  // Get API credentials based on current aiSources configuration
+  // Get API credentials and resolve for SDK use
   const credentials = await getApiCredentials(config)
   console.log(`[Agent] Session warm using: ${credentials.provider}, model: ${credentials.model}`)
 
-  // Route through OpenAI compat router for non-Anthropic providers
-  let anthropicBaseUrl = credentials.baseUrl
-  let anthropicApiKey = credentials.apiKey
-  let sdkModel = credentials.model || 'claude-opus-4-5-20251101'
+  // Resolve credentials for SDK (handles OpenAI compat router for non-Anthropic providers)
+  const resolvedCredentials = await resolveCredentialsForSdk(credentials)
 
-  // For non-Anthropic providers (openai or OAuth), use the OpenAI compat router
-  if (credentials.provider !== 'anthropic') {
-    const router = await ensureOpenAICompatRouter({ debug: false })
-    anthropicBaseUrl = router.baseUrl
+  // Get enabled MCP servers
+  const enabledMcpServers = getEnabledMcpServers(config.mcpServers || {})
 
-    // Use apiType from credentials (set by provider), fallback to inference
-    const apiType = credentials.apiType
-      || (credentials.provider === 'oauth' ? 'chat_completions' : inferOpenAIWireApi(credentials.baseUrl))
-
-    anthropicApiKey = encodeBackendConfig({
-      url: credentials.baseUrl,
-      key: credentials.apiKey,
-      model: credentials.model,
-      headers: credentials.customHeaders,
-      apiType
-    })
-    // Pass a fake Claude model to CC for normal request handling
-    sdkModel = 'claude-sonnet-4-20250514'
-    console.log(`[Agent] ${credentials.provider} provider enabled (warm): routing via ${anthropicBaseUrl}, apiType=${apiType}`)
-  }
-
-  // Write settings.json to isolated claude-config directory
-  // CLAUDE_CONFIG_DIR env var points CLI here, so it never touches ~/.claude/
-  ensureClaudeConfigSettings(anthropicApiKey, anthropicBaseUrl)
-
-  const sdkOptions: Record<string, any> = {
-    model: sdkModel,
-    cwd: workDir,
-    abortController,  // Consistent with sendMessage
-    env: (() => {
-      // IMPORTANT: Build env with bundled Node.js and Python paths
-      // This sets both PATH and ORIGINAL_PATH to ensure Git Bash uses our bundled runtimes
-      // Git Bash's /etc/profile rebuilds PATH using ORIGINAL_PATH, so we must set both
-      let baseEnv = buildEnvWithBundledNode(process.env)
-      baseEnv = buildEnvWithBundledPython(baseEnv)
-
-      // Clean inherited ANTHROPIC_* and CLAUDE_* variables to prevent leakage
-      // from the parent process into the CLI subprocess
-      const cleanedEnv: Record<string, any> = {}
-      for (const [key, value] of Object.entries(baseEnv)) {
-        if (key.startsWith('ANTHROPIC_') || key.startsWith('CLAUDE_')) continue
-        cleanedEnv[key] = value
-      }
-
-      return {
-        ...cleanedEnv,
-        // Then override with our critical values (highest priority)
-        ELECTRON_RUN_AS_NODE: 1,
-        ELECTRON_NO_ATTACH_CONSOLE: 1,
-        ANTHROPIC_API_KEY: anthropicApiKey,  // Our configured API key (overrides system)
-        ANTHROPIC_BASE_URL: anthropicBaseUrl,
-        // Point CLI to our isolated config directory (never touches ~/.claude/)
-        CLAUDE_CONFIG_DIR: getClaudeConfigDir(),
-        // Ensure localhost bypasses proxy
-        NO_PROXY: 'localhost,127.0.0.1',
-        no_proxy: 'localhost,127.0.0.1',
-        // Disable unnecessary API requests
-        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
-        DISABLE_TELEMETRY: '1',
-        DISABLE_COST_WARNINGS: '1'
-      }
-    })(),
-    extraArgs: {
-      'dangerously-skip-permissions': null
-    },
-    stderr: (data: string) => {  // Consistent with sendMessage
+  // Build SDK options using shared configuration
+  const sdkOptions = buildBaseSdkOptions({
+    credentials: resolvedCredentials,
+    workDir,
+    electronPath,
+    spaceId,
+    conversationId,
+    abortController,
+    stderrHandler: (data: string) => {
       console.error(`[Agent][${conversationId}] CLI stderr (warm):`, data)
     },
-    systemPrompt: {
-      type: 'preset' as const,
-      preset: 'claude_code' as const,
-      append: buildSystemPromptAppend(workDir, credentials.model)
-    },
-    maxTurns: 50,
-    allowedTools: ['Read', 'Write', 'Edit', 'Grep', 'Glob', 'Bash', 'Skill'],
-    // Disable WebSearch and WebFetch tools
-    disallowedTools: ['WebSearch', 'WebFetch'],
-    // Load both user and project settings
-    // - 'user': Load skills from CLAUDE_CONFIG_DIR/skills/ (our isolated config directory)
-    // - 'project': Load workspace settings and skills from <workspace>/.claude/
-    settingSources: ['user', 'project'],
-    permissionMode: 'acceptEdits' as const,
-    canUseTool: createCanUseTool(workDir, spaceId, conversationId),  // Consistent with sendMessage
-    includePartialMessages: true,
-    executable: electronPath,
-    executableArgs: [
-      '--no-warnings',
-      '--max-old-space-size=4096'  // Increase heap size to 4GB to prevent OOM on low-memory Windows machines
-    ],
-    // MCP servers configuration - pass through enabled servers only
-    ...((() => {
-      const enabledMcp = getEnabledMcpServers(config.mcpServers || {})
-      return enabledMcp ? { mcpServers: enabledMcp } : {}
-    })())
-  }
+    mcpServers: enabledMcpServers
+  })
 
   // Sync skills to claude-config/skills/ directory before creating session
   if (config.skills && Object.keys(config.skills).length > 0) {

@@ -10,7 +10,7 @@ import { createHash } from 'crypto'
 import { app, BrowserWindow } from 'electron'
 import { join, dirname } from 'path'
 import { existsSync, mkdirSync, symlinkSync, unlinkSync, lstatSync, readlinkSync, cpSync, rmSync, readdirSync, renameSync, writeFileSync, readFileSync } from 'fs'
-import { getConfig, getConfigPath, getTempSpacePath, getClaudeConfigDir } from '../config.service'
+import { getConfig, getConfigPath, getTempSpacePath } from '../config.service'
 import { getSpace } from '../space.service'
 import { getAISourceManager } from '../ai-sources'
 import { broadcastToAll, broadcastToWebSocket } from '../../http/websocket'
@@ -421,61 +421,6 @@ export function broadcastToAllClients(channel: string, data: Record<string, unkn
 // ============================================
 
 /**
- * Create or update settings.json in the isolated claude-config directory.
- * CLAUDE_CONFIG_DIR points the CLI subprocess here, so it never touches ~/.claude/.
- *
- * This replaces the old ensureWorkspaceSettings() which wrote to <workspace>/.claude/settings.json.
- */
-export function ensureClaudeConfigSettings(apiKey: string, baseUrl: string): void {
-  const configDir = getClaudeConfigDir()
-
-  // Create claude-config directory if it doesn't exist
-  if (!existsSync(configDir)) {
-    mkdirSync(configDir, { recursive: true })
-  }
-
-  const settingsFile = join(configDir, 'settings.json')
-
-  // Read existing settings if any
-  let settings: Record<string, any> = {}
-  if (existsSync(settingsFile)) {
-    try {
-      const content = readFileSync(settingsFile, 'utf-8')
-      settings = JSON.parse(content)
-    } catch (e) {
-      console.warn(`[Agent] Failed to read existing settings.json: ${e}`)
-    }
-  }
-
-  // Override API key and base URL
-  settings.anthropicApiKey = apiKey
-  settings.anthropicBaseUrl = baseUrl
-
-  // Add sandbox configuration (performance optimization + avoid tmpdir temp files)
-  // This prevents CLI from creating temp files in $TMPDIR which can cause chokidar
-  // to watch the entire tmpdir and crash on macOS (Unix socket files like CloudClient)
-  settings.sandbox = {
-    enabled: true,
-    autoAllowBashIfSandboxed: true,
-    network: {
-      allowedDomains: ['*'],        // Allow all domains
-      allowAllUnixSockets: true,    // Allow Docker, databases, etc.
-      allowLocalBinding: true       // Allow starting local servers
-    }
-  }
-
-  writeFileSync(settingsFile, JSON.stringify(settings, null, 2))
-  console.log(`[Agent] ========================================`)
-  console.log(`[Agent] Claude config settings.json updated:`)
-  console.log(`[Agent]   File: ${settingsFile}`)
-  console.log(`[Agent]   API Key (first 10 chars): ${apiKey.substring(0, 10)}...`)
-  console.log(`[Agent]   Base URL: ${baseUrl}`)
-  console.log(`[Agent]   Sandbox: enabled (performance + avoid tmpdir)`)
-  console.log(`[Agent]   CLAUDE_CONFIG_DIR isolation active`)
-  console.log(`[Agent] ========================================`)
-}
-
-/**
  * Sync all enabled skills to the isolated claude-config/skills/ directory.
  * CLI discovers skills from CLAUDE_CONFIG_DIR/skills/ when settingSources includes 'user'.
  *
@@ -486,6 +431,7 @@ export function ensureClaudeConfigSettings(apiKey: string, baseUrl: string): voi
  * IMPORTANT: SDK requires skill file to be named SKILL.md (uppercase)
  */
 export function syncSkillsToConfigDir(skills: Record<string, any>): void {
+  const { getClaudeConfigDir } = require('../config.service')
   const configSkillsDir = join(getClaudeConfigDir(), 'skills')
 
   // Create skills directory if it doesn't exist
