@@ -14,8 +14,7 @@ import { useSpaceStore } from '../../stores/space.store'
 import { useChatStore } from '../../stores/chat.store'
 import { useOnboardingStore } from '../../stores/onboarding.store'
 import { useAIBrowserStore } from '../../stores/ai-browser.store'
-import { useSmartScroll } from '../../hooks/useSmartScroll'
-import { MessageList } from './MessageList'
+import { MessageList, MessageListHandle } from './MessageList'
 import { InputArea } from './InputArea'
 import { ScrollToBottomButton } from './ScrollToBottomButton'
 import { Bot } from 'lucide-react'
@@ -69,6 +68,37 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
     }
   }, [isOnboarding])
 
+  // Get current conversation and its session state
+  const currentConversation = getCurrentConversation()
+  const { isLoadingConversation } = useChatStore()
+  const session = getCurrentSession()
+  const { isGenerating, streamingContent, isStreaming, thoughts, isThinking, compactInfo, error, textBlockVersion, pendingToolApproval } = session
+
+  // MessageList ref for scroll control
+  const messageListRef = useRef<MessageListHandle>(null)
+
+  // Track at-bottom state for scroll button visibility
+  const [isAtBottom, setIsAtBottom] = useState(true)
+  const showScrollButton = !isAtBottom
+
+  // Combine real messages with mock onboarding messages (must be before useEffect that uses it)
+  const realMessages = currentConversation?.messages || []
+  const displayMessages = mockUserMessage
+    ? [
+        ...realMessages,
+        { id: 'onboarding-user', role: 'user' as const, content: mockUserMessage, timestamp: new Date().toISOString() },
+        ...(mockAiResponse
+          ? [{ id: 'onboarding-ai', role: 'assistant' as const, content: mockAiResponse, timestamp: new Date().toISOString() }]
+          : [])
+      ]
+    : realMessages
+
+  const displayStreamingContent = mockStreamingContent || streamingContent
+  const displayIsGenerating = isMockAnimating || isGenerating
+  const displayIsThinking = isMockThinking || isThinking
+  const displayIsStreaming = isStreaming  // Only real streaming (not mock)
+  const hasMessages = displayMessages.length > 0 || displayStreamingContent || displayIsThinking
+
   // Handle search result navigation - scroll to message and highlight search term
   useEffect(() => {
     const handleNavigateToMessage = (event: Event) => {
@@ -77,54 +107,64 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
 
       console.log(`[ChatView] Attempting to navigate to message: ${messageId}`)
 
-      // Remove previous highlights from all messages
-      document.querySelectorAll('.search-highlight').forEach(el => {
-        el.classList.remove('search-highlight')
-      })
-      // Replace each mark element with its text content (preserving surrounding content)
-      document.querySelectorAll('.search-term-highlight').forEach(el => {
-        const textNode = document.createTextNode(el.textContent || '')
-        el.replaceWith(textNode)
-      })
-
-      // Find the message element
-      const messageElement = document.querySelector(`[data-message-id="${messageId}"]`)
-      if (!messageElement) {
-        console.warn(`[ChatView] Message element not found for ID: ${messageId}`)
+      // Find message index
+      const messageIndex = displayMessages.findIndex(m => m.id === messageId)
+      if (messageIndex === -1) {
+        console.warn(`[ChatView] Message not found in list: ${messageId}`)
         return
       }
 
-      console.log(`[ChatView] Found message element, scrolling and highlighting`)
+      // Scroll to message using MessageList ref
+      messageListRef.current?.scrollToIndex(messageIndex, 'smooth')
 
-      // Scroll into view smoothly
-      messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
-
-      // Add highlight animation
-      messageElement.classList.add('search-highlight')
+      // Wait for scroll, then highlight
       setTimeout(() => {
-        messageElement.classList.remove('search-highlight')
-      }, 2000)
+        // Remove previous highlights from all messages
+        document.querySelectorAll('.search-highlight').forEach(el => {
+          el.classList.remove('search-highlight')
+        })
+        // Replace each mark element with its text content (preserving surrounding content)
+        document.querySelectorAll('.search-term-highlight').forEach(el => {
+          const textNode = document.createTextNode(el.textContent || '')
+          el.replaceWith(textNode)
+        })
 
-      // Highlight search terms in the message (simple text highlight)
-      const contentElement = messageElement.querySelector('[data-message-content]')
-      if (contentElement && query) {
-        try {
-          // Create a regexp with word boundaries
-          const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
-          const originalHTML = contentElement.innerHTML
-
-          // Only highlight if we have content and haven't already highlighted
-          if (!originalHTML.includes('search-term-highlight')) {
-            contentElement.innerHTML = originalHTML.replace(
-              regex,
-              '<mark class="search-term-highlight bg-yellow-400/30 font-semibold rounded px-0.5">$1</mark>'
-            )
-            console.log(`[ChatView] Highlighted search term: "${query}"`)
-          }
-        } catch (error) {
-          console.error(`[ChatView] Error highlighting search term:`, error)
+        // Find the message element
+        const messageElement = document.querySelector(`[data-message-id="${messageId}"]`)
+        if (!messageElement) {
+          console.warn(`[ChatView] Message element not found for ID: ${messageId}`)
+          return
         }
-      }
+
+        console.log(`[ChatView] Found message element, highlighting`)
+
+        // Add highlight animation
+        messageElement.classList.add('search-highlight')
+        setTimeout(() => {
+          messageElement.classList.remove('search-highlight')
+        }, 2000)
+
+        // Highlight search terms in the message (simple text highlight)
+        const contentElement = messageElement.querySelector('[data-message-content]')
+        if (contentElement && query) {
+          try {
+            // Create a regexp with word boundaries
+            const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
+            const originalHTML = contentElement.innerHTML
+
+            // Only highlight if we have content and haven't already highlighted
+            if (!originalHTML.includes('search-term-highlight')) {
+              contentElement.innerHTML = originalHTML.replace(
+                regex,
+                '<mark class="search-term-highlight bg-yellow-400/30 font-semibold rounded px-0.5">$1</mark>'
+              )
+              console.log(`[ChatView] Highlighted search term: "${query}"`)
+            }
+          } catch (error) {
+            console.error(`[ChatView] Error highlighting search term:`, error)
+          }
+        }
+      }, 500)
     }
 
     // Clear all search highlights when requested
@@ -146,27 +186,7 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
       window.removeEventListener('search:navigate-to-message', handleNavigateToMessage)
       window.removeEventListener('search:clear-highlights', handleClearHighlights)
     }
-  }, [])
-
-  // Get current conversation and its session state
-  const currentConversation = getCurrentConversation()
-  const { isLoadingConversation } = useChatStore()
-  const session = getCurrentSession()
-  const { isGenerating, streamingContent, isStreaming, thoughts, isThinking, compactInfo, error, textBlockVersion, pendingToolApproval } = session
-
-  // Scrollable container ref
-  const containerRef = useRef<HTMLDivElement>(null)
-
-  // Smart auto-scroll: only scrolls when user is at bottom
-  const {
-    showScrollButton,
-    scrollToBottom,
-    handleScroll
-  } = useSmartScroll({
-    containerRef,
-    threshold: 100,
-    deps: [currentConversation?.messages, streamingContent, thoughts, mockStreamingContent]
-  })
+  }, [displayMessages])
 
   const onboardingPrompt = getOnboardingPrompt(t)
   const onboardingResponse = getOnboardingAiResponse(t)
@@ -245,24 +265,6 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
     }
   }
 
-  // Combine real messages with mock onboarding messages
-  const realMessages = currentConversation?.messages || []
-  const displayMessages = mockUserMessage
-    ? [
-        ...realMessages,
-        { id: 'onboarding-user', role: 'user' as const, content: mockUserMessage, timestamp: new Date().toISOString() },
-        ...(mockAiResponse
-          ? [{ id: 'onboarding-ai', role: 'assistant' as const, content: mockAiResponse, timestamp: new Date().toISOString() }]
-          : [])
-      ]
-    : realMessages
-
-  const displayStreamingContent = mockStreamingContent || streamingContent
-  const displayIsGenerating = isMockAnimating || isGenerating
-  const displayIsThinking = isMockThinking || isThinking
-  const displayIsStreaming = isStreaming  // Only real streaming (not mock)
-  const hasMessages = displayMessages.length > 0 || displayStreamingContent || displayIsThinking
-
   // Track previous compact state for smooth transitions
   const prevCompactRef = useRef(isCompact)
   const isTransitioningLayout = prevCompactRef.current !== isCompact
@@ -279,44 +281,35 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
         ${isCompact ? 'bg-background/50' : 'bg-background'}
       `}
     >
-      {/* Messages area wrapper - relative for button positioning */}
+      {/* Messages area - MessageList handles its own scrolling via Virtuoso */}
       <div className="flex-1 relative overflow-hidden">
-        {/* Scrollable messages container */}
-        <div
-          ref={containerRef}
-          onScroll={handleScroll}
-          className={`
-            h-full overflow-auto py-6
-            transition-[padding] duration-300 ease-out
-            ${isCompact ? 'px-3' : 'px-4'}
-          `}
-        >
-          {isLoadingConversation ? (
-            <LoadingState />
-          ) : !hasMessages ? (
-            <EmptyState isTemp={currentSpace?.isTemp || false} isCompact={isCompact} />
-          ) : (
-            <MessageList
-              messages={displayMessages}
-              streamingContent={displayStreamingContent}
-              isGenerating={displayIsGenerating}
-              isStreaming={displayIsStreaming}
-              thoughts={thoughts}
-              isThinking={displayIsThinking}
-              compactInfo={compactInfo}
-              error={error}
-              isCompact={isCompact}
-              textBlockVersion={textBlockVersion}
-              pendingToolApproval={pendingToolApproval}
-              conversationId={currentConversation?.id}
-            />
-          )}
-        </div>
+        {isLoadingConversation ? (
+          <LoadingState />
+        ) : !hasMessages ? (
+          <EmptyState isTemp={currentSpace?.isTemp || false} isCompact={isCompact} />
+        ) : (
+          <MessageList
+            ref={messageListRef}
+            messages={displayMessages}
+            streamingContent={displayStreamingContent}
+            isGenerating={displayIsGenerating}
+            isStreaming={displayIsStreaming}
+            thoughts={thoughts}
+            isThinking={displayIsThinking}
+            compactInfo={compactInfo}
+            error={error}
+            isCompact={isCompact}
+            textBlockVersion={textBlockVersion}
+            pendingToolApproval={pendingToolApproval}
+            conversationId={currentConversation?.id}
+            onAtBottomStateChange={setIsAtBottom}
+          />
+        )}
 
         {/* Scroll to bottom button - positioned outside scroll container */}
         <ScrollToBottomButton
           visible={showScrollButton && hasMessages}
-          onClick={() => scrollToBottom('smooth')}
+          onClick={() => messageListRef.current?.scrollToBottom('smooth')}
         />
       </div>
 

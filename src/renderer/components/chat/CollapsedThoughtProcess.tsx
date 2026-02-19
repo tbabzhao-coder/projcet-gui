@@ -13,6 +13,7 @@ import {
   ChevronUp,
   ChevronDown,
   Braces,
+  Loader2,
 } from 'lucide-react'
 import { TodoCard, parseTodoInput } from '../tool/TodoCard'
 import { ToolResultViewer } from './tool-result'
@@ -27,6 +28,7 @@ import { getCurrentLanguage, useTranslation } from '../../i18n'
 
 interface CollapsedThoughtProcessProps {
   thoughts: Thought[]
+  defaultExpanded?: boolean
 }
 
 
@@ -148,9 +150,9 @@ function ThoughtItem({ thought }: { thought: Thought }) {
   )
 }
 
-export function CollapsedThoughtProcess({ thoughts }: CollapsedThoughtProcessProps) {
+export function CollapsedThoughtProcess({ thoughts, defaultExpanded = false }: CollapsedThoughtProcessProps) {
   const { t } = useTranslation()
-  const [isExpanded, setIsExpanded] = useState(true)
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded)
   const [isMaximized, setIsMaximized] = useState(false)
 
   // Get latest todo data (only render one TodoCard at bottom)
@@ -257,6 +259,64 @@ export function CollapsedThoughtProcess({ thoughts }: CollapsedThoughtProcessPro
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * LazyCollapsedThoughtProcess - For separated thoughts (v2 format).
+ * Shows a collapsed summary bar initially, loads full thoughts on first expand,
+ * then renders the full CollapsedThoughtProcess.
+ */
+interface LazyCollapsedThoughtProcessProps {
+  thoughtsSummary: { duration?: number }
+  onLoadThoughts: () => Promise<Thought[]>
+}
+
+export function LazyCollapsedThoughtProcess({ thoughtsSummary, onLoadThoughts }: LazyCollapsedThoughtProcessProps) {
+  const { t } = useTranslation()
+  const [loadedThoughts, setLoadedThoughts] = useState<Thought[] | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+
+  // Once loaded, render expanded — user explicitly clicked to load thoughts
+  if (loadedThoughts) {
+    return <CollapsedThoughtProcess thoughts={loadedThoughts} defaultExpanded />
+  }
+
+  const duration = thoughtsSummary.duration
+
+  const handleClick = async () => {
+    console.log('[LazyCollapsedThoughtProcess] User clicked to load thoughts')
+    setIsLoading(true)
+    try {
+      const thoughts = await onLoadThoughts()
+      console.log(`[LazyCollapsedThoughtProcess] Loaded ${thoughts.length} thoughts, rendering full view`)
+      setLoadedThoughts(thoughts)
+    } catch (err) {
+      console.error('[LazyCollapsedThoughtProcess] Failed to load thoughts:', err)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <div className="mb-2">
+      <button
+        onClick={handleClick}
+        disabled={isLoading}
+        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-all duration-200 w-full bg-muted/30 hover:bg-muted/50 border border-transparent"
+      >
+        {isLoading ? (
+          <Loader2 size={12} className="text-muted-foreground animate-spin" />
+        ) : (
+          <ChevronRight size={12} className="text-muted-foreground" />
+        )}
+        <Lightbulb size={14} className="text-primary" />
+        <span className="text-muted-foreground">{t('Thought process')}</span>
+        <div className="flex items-center gap-1.5 text-muted-foreground/60">
+          {duration != null && <span>{duration.toFixed(1)}s</span>}
+        </div>
+      </button>
     </div>
   )
 }
