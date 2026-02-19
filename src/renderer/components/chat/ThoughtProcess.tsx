@@ -25,6 +25,7 @@ import {
   getToolFriendlyFormat,
 } from './thought-utils'
 import { useSmartScroll } from '../../hooks/useSmartScroll'
+import { useLazyVisible } from '../../hooks/useLazyVisible'
 import type { Thought } from '../../types'
 import { useTranslation } from '../../i18n'
 
@@ -142,8 +143,26 @@ const ThoughtItem = memo(function ThoughtItem({ thought, isLast }: { thought: Th
   const [showResult, setShowResult] = useState(true)  // Tool result collapsed by default shows summary
   const [isContentExpanded, setIsContentExpanded] = useState(false)  // For thinking content expand
   const { t } = useTranslation()
+  const { ref, isVisible } = useLazyVisible({ rootMargin: '200px' })
   const color = getThoughtColor(thought.type, thought.isError)
   const Icon = getThoughtIcon(thought.type, thought.toolName)
+
+  // If not visible yet, render placeholder
+  if (!isVisible) {
+    return (
+      <div ref={ref} className="flex gap-3 group" style={{ minHeight: '60px' }}>
+        {/* Placeholder skeleton */}
+        <div className="flex flex-col items-center">
+          <div className="w-7 h-7 rounded-full bg-muted/20 animate-pulse" />
+          {!isLast && <div className="w-0.5 flex-1 bg-border/30 mt-1" />}
+        </div>
+        <div className="flex-1 pb-4">
+          <div className="h-4 w-32 bg-muted/20 rounded animate-pulse mb-2" />
+          <div className="h-3 w-full bg-muted/20 rounded animate-pulse" />
+        </div>
+      </div>
+    )
+  }
 
   // Determine content and display mode based on thought type and streaming state
   const isStreaming = thought.isStreaming ?? false
@@ -195,7 +214,7 @@ const ThoughtItem = memo(function ThoughtItem({ thought, isLast }: { thought: Th
 
 
   return (
-    <div className="flex gap-3 group animate-fade-in">
+    <div ref={ref} className="flex gap-3 group animate-fade-in">
       {/* Timeline line */}
       <div className="flex flex-col items-center">
         <div className={`w-7 h-7 rounded-full flex items-center justify-center ${
