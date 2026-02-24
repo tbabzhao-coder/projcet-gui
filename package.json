@@ -283,6 +283,7 @@
     },
     "win": {
       "icon": "resources/icon.ico",
+      "signAndEditExecutable": false,
       "extraResources": [
         {
           "from": "resources/python-win-x64",
