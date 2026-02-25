@@ -136,6 +136,13 @@ export const api = {
     return httpRequest('GET', '/api/config/skills')
   },
 
+  listMcp: async (): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.project4.listMcp()
+    }
+    return httpRequest('GET', '/api/config/mcp')
+  },
+
   // ===== Space =====
   getTempSpace: async (): Promise<ApiResponse> => {
     if (isElectron()) {

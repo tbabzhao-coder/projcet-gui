@@ -21,6 +21,7 @@ export interface Project4API {
   validateApi: (apiKey: string, apiUrl: string, provider: string) => Promise<IpcResponse>
   refreshAISourcesConfig: () => Promise<IpcResponse>
   listSkills: () => Promise<IpcResponse<Array<{ key: string; description: string }>>>
+  listMcp: () => Promise<IpcResponse<Array<{ key: string; description: string }>>>
 
   // Space
   getTempSpace: () => Promise<IpcResponse>
@@ -312,6 +313,7 @@ const api: Project4API = {
     ipcRenderer.invoke('config:validate-api', apiKey, apiUrl, provider),
   refreshAISourcesConfig: () => ipcRenderer.invoke('config:refresh-ai-sources'),
   listSkills: () => ipcRenderer.invoke('config:list-skills'),
+  listMcp: () => ipcRenderer.invoke('config:list-mcp'),
 
   // Space
   getTempSpace: () => ipcRenderer.invoke('space:get-project4'),

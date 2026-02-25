@@ -41,6 +41,7 @@ interface InputAreaProps {
   placeholder?: string
   isCompact?: boolean
   skills?: SkillInfo[]
+  mcpServers?: SkillInfo[]
 }
 
 // Image constraints
@@ -53,7 +54,7 @@ interface ImageError {
   message: string
 }
 
-export function InputArea({ onSend, onStop, isGenerating, placeholder, isCompact = false, skills }: InputAreaProps) {
+export function InputArea({ onSend, onStop, isGenerating, placeholder, isCompact = false, skills, mcpServers }: InputAreaProps) {
   const { t } = useTranslation()
   const [content, setContent] = useState('')
   const [isFocused, setIsFocused] = useState(false)
@@ -65,6 +66,7 @@ export function InputArea({ onSend, onStop, isGenerating, placeholder, isCompact
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [slashMenuOpen, setSlashMenuOpen] = useState(false)
   const [slashFilter, setSlashFilter] = useState('')
+  const [slashMenuType, setSlashMenuType] = useState<'skill' | 'mcp'>('skill')
   const [selectedIndex, setSelectedIndex] = useState(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -100,17 +102,19 @@ export function InputArea({ onSend, onStop, isGenerating, placeholder, isCompact
     setImageError({ id: `err-${Date.now()}`, message })
   }
 
-  // Filtered skills based on slashFilter
+  // Filtered items for slash menu (skills or mcp servers)
   const filteredSkills = useMemo(() => {
-    if (!skills || skills.length === 0) return []
-    if (!slashFilter) return skills
+    const list = slashMenuType === 'skill' ? skills : mcpServers
+    if (!list || list.length === 0) return []
+    if (!slashFilter) return list
     const lower = slashFilter.toLowerCase()
-    return skills.filter(s => s.key.toLowerCase().includes(lower))
-  }, [skills, slashFilter])
+    return list.filter(s => s.key.toLowerCase().includes(lower))
+  }, [skills, mcpServers, slashMenuType, slashFilter])
 
-  // Apply selected skill
-  const applySkill = (skillKey: string) => {
-    const newContent = content.replace(/\/skill(\s\S*)?$/, `/${skillKey} `)
+  // Apply selected skill or mcp
+  const applySkill = (key: string) => {
+    const pattern = slashMenuType === 'skill' ? /\/skill(\s\S*)?$/ : /\/mcp(\s\S*)?$/
+    const newContent = content.replace(pattern, `/${key} `)
     setContent(newContent)
     setSlashMenuOpen(false)
     setSlashFilter('')
@@ -270,15 +274,21 @@ export function InputArea({ onSend, onStop, isGenerating, placeholder, isCompact
     const hasContent = textToSend || images.length > 0
 
     if (hasContent && !isGenerating) {
-      // Transform /skillname [args] → invoke skill instruction
-      // e.g. "/docx 写成word" → "Please use the docx skill. 写成word"
-      const skillMatch = textToSend.match(/^\/(\S+)(?:\s+([\s\S]*))?$/)
-      if (skillMatch) {
-        const skillName = skillMatch[1]
-        const args = skillMatch[2] || ''
-        textToSend = args
-          ? `Please use the ${skillName} skill. ${args}`
-          : `Please use the ${skillName} skill.`
+      // Transform /skillname [args] or /mcpname [args] into explicit instructions
+      const slashMatch = textToSend.match(/^\/(\S+)(?:\s+([\s\S]*))?$/)
+      if (slashMatch) {
+        const name = slashMatch[1]
+        const args = slashMatch[2] || ''
+        const isMcpServer = mcpServers?.some(m => m.key === name)
+        if (isMcpServer) {
+          textToSend = args
+            ? `Please use the ${name} MCP server. ${args}`
+            : `Please use the ${name} MCP server.`
+        } else {
+          textToSend = args
+            ? `Please use the ${name} skill. ${args}`
+            : `Please use the ${name} skill.`
+        }
       }
 
       onSend(textToSend, images.length > 0 ? images : undefined, thinkingEnabled)
@@ -419,7 +429,7 @@ export function InputArea({ onSend, onStop, isGenerating, placeholder, isCompact
               <div className="absolute bottom-full left-0 mb-1 w-72 bg-popover border border-border
                 rounded-xl shadow-lg z-30 overflow-hidden">
                 <div className="px-3 py-1.5 text-xs text-muted-foreground border-b border-border/50 flex items-center gap-1.5">
-                  <span className="font-medium">Skills</span>
+                  <span className="font-medium">{slashMenuType === 'skill' ? 'Skills' : 'MCP Servers'}</span>
                   {slashFilter && <span className="opacity-60">· {slashFilter}</span>}
                 </div>
                 {filteredSkills.map((skill, i) => (
@@ -447,10 +457,17 @@ export function InputArea({ onSend, onStop, isGenerating, placeholder, isCompact
                 setContent(val)
                 const cursor = e.target.selectionStart ?? val.length
                 const before = val.slice(0, cursor)
-                const match = before.match(/(^|\s)\/skill(\s(\S*))?$/)
-                if (match) {
+                const skillMatch = before.match(/(^|\s)\/skill(\s(\S*))?$/)
+                const mcpMatch = before.match(/(^|\s)\/mcp(\s(\S*))?$/)
+                if (skillMatch) {
+                  setSlashMenuType('skill')
                   setSlashMenuOpen(true)
-                  setSlashFilter(match[3] || '')
+                  setSlashFilter(skillMatch[3] || '')
+                  setSelectedIndex(0)
+                } else if (mcpMatch) {
+                  setSlashMenuType('mcp')
+                  setSlashMenuOpen(true)
+                  setSlashFilter(mcpMatch[3] || '')
                   setSelectedIndex(0)
                 } else {
                   setSlashMenuOpen(false)

@@ -123,4 +123,24 @@ export function registerConfigHandlers(): void {
       return { success: false, error: err.message, data: [] }
     }
   })
+
+  // List available MCP servers from config
+  ipcMain.handle('config:list-mcp', async () => {
+    try {
+      const config = getConfig() as Record<string, any>
+      const servers: Array<{ key: string; description: string }> = []
+
+      if (config.mcpServers && typeof config.mcpServers === 'object') {
+        for (const [key, server] of Object.entries(config.mcpServers as Record<string, any>)) {
+          if (server?.disabled) continue
+          servers.push({ key, description: server?.description || '' })
+        }
+      }
+
+      return { success: true, data: servers }
+    } catch (error: unknown) {
+      const err = error as Error
+      return { success: false, error: err.message, data: [] }
+    }
+  })
 }

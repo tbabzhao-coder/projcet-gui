@@ -44,11 +44,15 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
     addMockMessage
   } = useChatStore()
 
-  // Skills for /skill slash command
+  // Skills and MCP servers for slash commands
   const [skills, setSkills] = useState<SkillInfo[]>([])
+  const [mcpServers, setMcpServers] = useState<SkillInfo[]>([])
   useEffect(() => {
     api.listSkills().then(res => {
       if (res.success && Array.isArray(res.data)) setSkills(res.data)
+    })
+    api.listMcp().then(res => {
+      if (res.success && Array.isArray(res.data)) setMcpServers(res.data)
     })
   }, [])
 
@@ -330,6 +334,7 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
         placeholder={isCompact ? t('Continue conversation...') : (currentSpace?.isTemp ? t('Say something to Project4...') : t('Continue conversation...'))}
         isCompact={isCompact}
         skills={skills}
+        mcpServers={mcpServers}
       />
     </div>
   )
