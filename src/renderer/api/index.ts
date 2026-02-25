@@ -129,6 +129,13 @@ export const api = {
     return httpRequest('POST', '/api/config/refresh-ai-sources')
   },
 
+  listSkills: async (): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.project4.listSkills()
+    }
+    return httpRequest('GET', '/api/config/skills')
+  },
+
   // ===== Space =====
   getTempSpace: async (): Promise<ApiResponse> => {
     if (isElectron()) {

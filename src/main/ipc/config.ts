@@ -103,4 +103,24 @@ export function registerConfigHandlers(): void {
       return { success: false, error: err.message }
     }
   })
+
+  // List available skills from config (built-in + user-imported)
+  ipcMain.handle('config:list-skills', async () => {
+    try {
+      const config = getConfig() as Record<string, any>
+      const skills: Array<{ key: string; description: string }> = []
+
+      if (config.skills && typeof config.skills === 'object') {
+        for (const [key, skill] of Object.entries(config.skills as Record<string, any>)) {
+          if (skill?.disabled) continue
+          skills.push({ key, description: skill?.description || '' })
+        }
+      }
+
+      return { success: true, data: skills }
+    } catch (error: unknown) {
+      const err = error as Error
+      return { success: false, error: err.message, data: [] }
+    }
+  })
 }

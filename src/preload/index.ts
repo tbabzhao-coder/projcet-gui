@@ -20,6 +20,7 @@ export interface Project4API {
   setConfig: (updates: Record<string, unknown>) => Promise<IpcResponse>
   validateApi: (apiKey: string, apiUrl: string, provider: string) => Promise<IpcResponse>
   refreshAISourcesConfig: () => Promise<IpcResponse>
+  listSkills: () => Promise<IpcResponse<Array<{ key: string; description: string }>>>
 
   // Space
   getTempSpace: () => Promise<IpcResponse>
@@ -310,6 +311,7 @@ const api: Project4API = {
   validateApi: (apiKey, apiUrl, provider) =>
     ipcRenderer.invoke('config:validate-api', apiKey, apiUrl, provider),
   refreshAISourcesConfig: () => ipcRenderer.invoke('config:refresh-ai-sources'),
+  listSkills: () => ipcRenderer.invoke('config:list-skills'),
 
   // Space
   getTempSpace: () => ipcRenderer.invoke('space:get-project4'),

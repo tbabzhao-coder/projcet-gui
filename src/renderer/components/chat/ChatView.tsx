@@ -10,6 +10,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react'
+import type { SkillInfo } from './InputArea'
 import { useSpaceStore } from '../../stores/space.store'
 import { useChatStore } from '../../stores/chat.store'
 import { useOnboardingStore } from '../../stores/onboarding.store'
@@ -42,6 +43,14 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
     stopGeneration,
     addMockMessage
   } = useChatStore()
+
+  // Skills for /skill slash command
+  const [skills, setSkills] = useState<SkillInfo[]>([])
+  useEffect(() => {
+    api.listSkills().then(res => {
+      if (res.success && Array.isArray(res.data)) setSkills(res.data)
+    })
+  }, [])
 
   // Onboarding state
   const {
@@ -320,6 +329,7 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
         isGenerating={isGenerating}
         placeholder={isCompact ? t('Continue conversation...') : (currentSpace?.isTemp ? t('Say something to Project4...') : t('Continue conversation...'))}
         isCompact={isCompact}
+        skills={skills}
       />
     </div>
   )

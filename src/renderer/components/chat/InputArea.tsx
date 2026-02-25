@@ -19,7 +19,7 @@
  * - Bottom toolbar for future extensibility
  */
 
-import { useState, useRef, useEffect, KeyboardEvent, ClipboardEvent, DragEvent } from 'react'
+import { useState, useRef, useEffect, useMemo, KeyboardEvent, ClipboardEvent, DragEvent } from 'react'
 import { Plus, ImagePlus, Loader2, AlertCircle, Atom, Globe } from 'lucide-react'
 import { useOnboardingStore } from '../../stores/onboarding.store'
 import { useAIBrowserStore } from '../../stores/ai-browser.store'
@@ -29,12 +29,18 @@ import { processImage, isValidImageType, formatFileSize } from '../../utils/imag
 import type { ImageAttachment } from '../../types'
 import { useTranslation } from '../../i18n'
 
+export interface SkillInfo {
+  key: string
+  description: string
+}
+
 interface InputAreaProps {
   onSend: (content: string, images?: ImageAttachment[], thinkingEnabled?: boolean) => void
   onStop: () => void
   isGenerating: boolean
   placeholder?: string
   isCompact?: boolean
+  skills?: SkillInfo[]
 }
 
 // Image constraints
@@ -47,7 +53,7 @@ interface ImageError {
   message: string
 }
 
-export function InputArea({ onSend, onStop, isGenerating, placeholder, isCompact = false }: InputAreaProps) {
+export function InputArea({ onSend, onStop, isGenerating, placeholder, isCompact = false, skills }: InputAreaProps) {
   const { t } = useTranslation()
   const [content, setContent] = useState('')
   const [isFocused, setIsFocused] = useState(false)
@@ -55,8 +61,11 @@ export function InputArea({ onSend, onStop, isGenerating, placeholder, isCompact
   const [isDragOver, setIsDragOver] = useState(false)
   const [isProcessingImages, setIsProcessingImages] = useState(false)
   const [imageError, setImageError] = useState<ImageError | null>(null)
-  const [thinkingEnabled, setThinkingEnabled] = useState(false)  // Extended thinking mode
-  const [showAttachMenu, setShowAttachMenu] = useState(false)  // Attachment menu visibility
+  const [thinkingEnabled, setThinkingEnabled] = useState(false)
+  const [showAttachMenu, setShowAttachMenu] = useState(false)
+  const [slashMenuOpen, setSlashMenuOpen] = useState(false)
+  const [slashFilter, setSlashFilter] = useState('')
+  const [selectedIndex, setSelectedIndex] = useState(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const attachMenuRef = useRef<HTMLDivElement>(null)
@@ -89,6 +98,24 @@ export function InputArea({ onSend, onStop, isGenerating, placeholder, isCompact
   // Show error to user
   const showError = (message: string) => {
     setImageError({ id: `err-${Date.now()}`, message })
+  }
+
+  // Filtered skills based on slashFilter
+  const filteredSkills = useMemo(() => {
+    if (!skills || skills.length === 0) return []
+    if (!slashFilter) return skills
+    const lower = slashFilter.toLowerCase()
+    return skills.filter(s => s.key.toLowerCase().includes(lower))
+  }, [skills, slashFilter])
+
+  // Apply selected skill
+  const applySkill = (skillKey: string) => {
+    const newContent = content.replace(/\/skill(\s\S*)?$/, `/${skillKey} `)
+    setContent(newContent)
+    setSlashMenuOpen(false)
+    setSlashFilter('')
+    setSelectedIndex(0)
+    textareaRef.current?.focus()
   }
 
   // Onboarding state
@@ -239,17 +266,26 @@ export function InputArea({ onSend, onStop, isGenerating, placeholder, isCompact
 
   // Handle send
   const handleSend = () => {
-    const textToSend = isOnboardingSendStep ? onboardingPrompt : content.trim()
+    let textToSend = isOnboardingSendStep ? onboardingPrompt : content.trim()
     const hasContent = textToSend || images.length > 0
 
     if (hasContent && !isGenerating) {
+      // Transform /skillname [args] → invoke skill instruction
+      // e.g. "/docx 写成word" → "Please use the docx skill. 写成word"
+      const skillMatch = textToSend.match(/^\/(\S+)(?:\s+([\s\S]*))?$/)
+      if (skillMatch) {
+        const skillName = skillMatch[1]
+        const args = skillMatch[2] || ''
+        textToSend = args
+          ? `Please use the ${skillName} skill. ${args}`
+          : `Please use the ${skillName} skill.`
+      }
+
       onSend(textToSend, images.length > 0 ? images : undefined, thinkingEnabled)
 
       if (!isOnboardingSendStep) {
         setContent('')
-        setImages([])  // Clear images after send
-        // Don't reset thinkingEnabled - user might want to keep it on
-        // Reset height
+        setImages([])
         if (textareaRef.current) {
           textareaRef.current.style.height = 'auto'
         }
@@ -264,9 +300,30 @@ export function InputArea({ onSend, onStop, isGenerating, placeholder, isCompact
 
   // Handle key press
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Ignore key events during IME composition (Chinese/Japanese/Korean input)
-    // This prevents Enter from sending the message while confirming IME candidates
     if (e.nativeEvent.isComposing) return
+
+    // Slash menu navigation
+    if (slashMenuOpen && filteredSkills.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSelectedIndex(i => Math.min(i + 1, filteredSkills.length - 1))
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSelectedIndex(i => Math.max(i - 1, 0))
+        return
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        applySkill(filteredSkills[selectedIndex].key)
+        return
+      }
+      if (e.key === 'Escape') {
+        setSlashMenuOpen(false)
+        return
+      }
+    }
 
     // Mobile: Enter for newline, send via button only
     // PC: Enter to send, Shift+Enter for newline
@@ -356,11 +413,49 @@ export function InputArea({ onSend, onStop, isGenerating, placeholder, isCompact
           )}
 
           {/* Textarea area */}
-          <div className="px-3 pt-3 pb-1">
+          <div className="px-3 pt-3 pb-1 relative">
+            {/* Slash menu */}
+            {slashMenuOpen && filteredSkills.length > 0 && (
+              <div className="absolute bottom-full left-0 mb-1 w-72 bg-popover border border-border
+                rounded-xl shadow-lg z-30 overflow-hidden">
+                <div className="px-3 py-1.5 text-xs text-muted-foreground border-b border-border/50 flex items-center gap-1.5">
+                  <span className="font-medium">Skills</span>
+                  {slashFilter && <span className="opacity-60">· {slashFilter}</span>}
+                </div>
+                {filteredSkills.map((skill, i) => (
+                  <button
+                    key={skill.key}
+                    onMouseDown={(e) => { e.preventDefault(); applySkill(skill.key) }}
+                    onMouseEnter={() => setSelectedIndex(i)}
+                    className={`w-full px-3 py-2 flex items-center gap-2 text-left transition-colors duration-100
+                      ${i === selectedIndex ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-muted/50'}`}
+                  >
+                    <span className="text-sm font-mono font-medium">/{skill.key}</span>
+                    {skill.description && (
+                      <span className="text-xs text-muted-foreground truncate flex-1">{skill.description}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
             <textarea
               ref={textareaRef}
               value={displayContent}
-              onChange={(e) => !isOnboardingSendStep && setContent(e.target.value)}
+              onChange={(e) => {
+                if (isOnboardingSendStep) return
+                const val = e.target.value
+                setContent(val)
+                const cursor = e.target.selectionStart ?? val.length
+                const before = val.slice(0, cursor)
+                const match = before.match(/(^|\s)\/skill(\s(\S*))?$/)
+                if (match) {
+                  setSlashMenuOpen(true)
+                  setSlashFilter(match[3] || '')
+                  setSelectedIndex(0)
+                } else {
+                  setSlashMenuOpen(false)
+                }
+              }}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
               onFocus={() => setIsFocused(true)}
