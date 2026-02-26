@@ -4,7 +4,7 @@
 
 import { ipcMain, shell } from 'electron'
 import { listArtifacts, listArtifactsTree, readArtifactContent } from '../services/artifact.service'
-import { initSpaceCache } from '../services/artifact-cache.service'
+import { initSpaceCache, loadDirectoryChildren } from '../services/artifact-cache.service'
 import { getSpace } from '../services/space.service'
 
 // Register all artifact handlers
@@ -45,6 +45,21 @@ export function registerArtifactHandlers(): void {
       return { success: true, data: tree }
     } catch (error) {
       console.error('[IPC] artifact:list-tree error:', error)
+      return { success: false, error: (error as Error).message }
+    }
+  })
+
+  // Load children for a directory (lazy-loaded tree)
+  ipcMain.handle('artifact:load-children', async (_event, spaceId: string, dirPath: string) => {
+    try {
+      const space = getSpace(spaceId)
+      if (!space) {
+        return { success: false, error: 'Space not found' }
+      }
+      const children = await loadDirectoryChildren(spaceId, dirPath, space.path)
+      return { success: true, data: children }
+    } catch (error) {
+      console.error('[IPC] artifact:load-children error:', error)
       return { success: false, error: (error as Error).message }
     }
   })
