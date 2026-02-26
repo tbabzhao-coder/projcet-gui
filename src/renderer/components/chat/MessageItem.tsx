@@ -188,6 +188,18 @@ function ThoughtItem({ thought }: { thought: Thought }) {
   )
 }
 
+function formatTimestamp(iso: string): string {
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }).format(new Date(iso))
+}
+
 export function MessageItem({ message, previousCost = 0, hideThoughts = false, isInContainer = false, isWorking = false, isWaitingMore = false }: MessageItemProps) {
   const isUser = message.role === 'user'
   const isStreaming = (message as any).isStreaming
@@ -291,28 +303,44 @@ export function MessageItem({ message, previousCost = 0, hideThoughts = false, i
         <FileChangesFooter thoughts={message.thoughts} />
       )}
 
-      {/* Token usage indicator + copy button - only for completed assistant messages with tokenUsage */}
-      {!isUser && !isWorking && message.tokenUsage && (
-        <div className="flex justify-end items-center gap-2 mt-2 pt-1">
-          {/* Token usage indicator */}
-          <TokenUsageIndicator tokenUsage={message.tokenUsage} previousCost={previousCost} />
+      {/* Timestamp - user messages */}
+      {isUser && message.timestamp && (
+        <div className="text-right mt-1">
+          <span className="text-xs opacity-50">{formatTimestamp(message.timestamp)}</span>
+        </div>
+      )}
 
-          {/* Copy button */}
-          <button
-            onClick={handleCopyMessage}
-            className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground/60
-              hover:text-foreground hover:bg-white/5 rounded-md transition-all"
-            title={t('Copy message')}
-          >
-            {copied ? (
-              <>
-                <Check size={14} className="text-green-400" />
-                <span className="text-green-400">{t('Copied')}</span>
-              </>
-            ) : (
-              <Copy size={14} />
+      {/* Token usage indicator + copy button + timestamp - only for completed assistant messages */}
+      {!isUser && !isWorking && (
+        <div className="flex justify-between items-center gap-2 mt-2 pt-1">
+          {/* Timestamp */}
+          <span className="text-xs text-muted-foreground/50">
+            {message.timestamp ? formatTimestamp(message.timestamp) : ''}
+          </span>
+
+          <div className="flex items-center gap-2">
+            {/* Token usage indicator */}
+            {message.tokenUsage && (
+              <TokenUsageIndicator tokenUsage={message.tokenUsage} previousCost={previousCost} />
             )}
-          </button>
+
+            {/* Copy button */}
+            <button
+              onClick={handleCopyMessage}
+              className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground/60
+                hover:text-foreground hover:bg-white/5 rounded-md transition-all"
+              title={t('Copy message')}
+            >
+              {copied ? (
+                <>
+                  <Check size={14} className="text-green-400" />
+                  <span className="text-green-400">{t('Copied')}</span>
+                </>
+              ) : (
+                <Copy size={14} />
+              )}
+            </button>
+          </div>
         </div>
       )}
     </div>

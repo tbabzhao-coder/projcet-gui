@@ -5,7 +5,7 @@
 import { app } from 'electron'
 import { join } from 'path'
 import { homedir } from 'os'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from 'fs'
 import { getPythonExecutable, getBundledPythonPath } from './python-runtime.service'
 import { getBundledNodeExecutable } from './node-runtime.service'
 
@@ -934,6 +934,37 @@ export function getConfig(): AppConfig {
             // User-defined skill (not built-in)
             skills[name] = userConfig
           }
+        }
+
+        // Finally, scan ~/.claude/skills/ and merge any skills not already present
+        try {
+          const claudeSkillsDir = join(homedir(), '.claude', 'skills')
+          if (existsSync(claudeSkillsDir)) {
+            const entries = readdirSync(claudeSkillsDir, { withFileTypes: true })
+            for (const entry of entries) {
+              if (!entry.isDirectory()) continue
+              const skillName = entry.name
+              // Don't override skills already defined (built-in or user config)
+              if (skills[skillName]) continue
+              const skillDir = join(claudeSkillsDir, skillName)
+              const skillMdPath = join(skillDir, 'SKILL.md')
+              let description = ''
+              if (existsSync(skillMdPath)) {
+                const content = readFileSync(skillMdPath, 'utf-8')
+                const match = content.match(/^description:\s*(.+)$/m)
+                if (match) description = match[1].trim()
+              }
+              skills[skillName] = {
+                name: skillName,
+                path: skillDir,
+                type: 'directory',
+                description,
+                __builtIn: false
+              } as any
+            }
+          }
+        } catch (e) {
+          console.warn('[Config] Failed to scan ~/.claude/skills:', e)
         }
 
         return skills
