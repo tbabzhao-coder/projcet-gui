@@ -420,6 +420,9 @@ export function broadcastToAllClients(channel: string, data: Record<string, unkn
 // Skills Management
 // ============================================
 
+// Cache last synced skills hash to avoid redundant file operations on Windows
+let _lastSyncedSkillsHash: string | null = null
+
 /**
  * Sync all enabled skills to the isolated claude-config/skills/ directory.
  * CLI discovers skills from CLAUDE_CONFIG_DIR/skills/ when settingSources includes 'user'.
@@ -429,6 +432,9 @@ export function broadcastToAllClients(channel: string, data: Record<string, unkn
  * without relying on the original import path.
  *
  * IMPORTANT: SDK requires skill file to be named SKILL.md (uppercase)
+ *
+ * Performance: Caches sync result to avoid redundant file operations on Windows.
+ * On Windows, cpSync/rmSync are 5-10x slower than macOS, causing UI freezes during warm-up.
  */
 export function syncSkillsToConfigDir(skills: Record<string, any>): void {
   const configSkillsDir = join(getClaudeConfigDir(), 'skills')
@@ -444,6 +450,13 @@ export function syncSkillsToConfigDir(skills: Record<string, any>): void {
   )
 
   if (enabledSkills.length === 0) {
+    return
+  }
+
+  // Calculate hash of current skills to detect changes
+  const currentHash = calculateSkillsHash(skills)
+  if (_lastSyncedSkillsHash === currentHash) {
+    console.log(`[Agent] Skills already synced (hash: ${currentHash}), skipping`)
     return
   }
 
@@ -498,6 +511,9 @@ export function syncSkillsToConfigDir(skills: Record<string, any>): void {
       console.error(`[Agent] ✗ Failed to sync skill ${name}:`, error)
     }
   }
+
+  // Update cache after successful sync
+  _lastSyncedSkillsHash = currentHash
 
   console.log(`[Agent] Skills sync complete. CLI will load from: ${configSkillsDir}`)
   console.log(`[Agent] ========================================`)

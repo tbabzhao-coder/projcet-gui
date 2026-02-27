@@ -5,7 +5,7 @@
 import { app } from 'electron'
 import { join } from 'path'
 import { homedir } from 'os'
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { getPythonExecutable, getBundledPythonPath } from './python-runtime.service'
 import { getBundledNodeExecutable } from './node-runtime.service'
 
@@ -34,8 +34,11 @@ type SkillsConfig = Record<string, SkillConfig>
 /**
  * Get built-in skills bundled with the application
  * These skills are automatically available to all users without manual import
+ * Results are cached since built-in resources don't change at runtime.
  */
+let _builtInSkillsCache: SkillsConfig | null = null
 function getBuiltInSkills(): SkillsConfig {
+  if (_builtInSkillsCache) return _builtInSkillsCache
   const builtIn: SkillsConfig = {}
 
   try {
@@ -176,6 +179,7 @@ function getBuiltInSkills(): SkillsConfig {
     console.warn('[Config] Failed to configure built-in skills:', error)
   }
 
+  _builtInSkillsCache = builtIn
   return builtIn
 }
 
@@ -273,7 +277,10 @@ function getBuiltInMcpServerPath(packageName: string): string | null {
 // - Development: uses project node_modules
 // - Production: uses app.asar packaged modules
 // - Cross-platform: automatically finds node in PATH
+// Results are cached since built-in resources don't change at runtime.
+let _builtInMcpCache: Record<string, any> | null = null
 function getBuiltInMcpServers(): Record<string, any> {
+  if (_builtInMcpCache) return _builtInMcpCache
   const builtIn: Record<string, any> = {}
 
   // Playwright MCP
@@ -488,6 +495,7 @@ function getBuiltInMcpServers(): Record<string, any> {
     console.warn('[Config] quick-chart-mcp not found, QuickChart MCP will not be available')
   }
 
+  _builtInMcpCache = builtIn
   return builtIn
 }
 
@@ -825,8 +833,14 @@ export async function initializeApp(): Promise<void> {
   }
 }
 
+// In-memory config cache to avoid repeated disk reads on Windows
+// Invalidated on every saveConfig() call
+let _configCache: AppConfig | null = null
+
 // Get configuration
 export function getConfig(): AppConfig {
+  if (_configCache) return _configCache
+
   const configPath = getConfigPath()
   const isDev = !app.isPackaged || process.env.NODE_ENV === 'development'
 
@@ -860,7 +874,7 @@ export function getConfig(): AppConfig {
     console.log('[Config] Normalized aiSources.current:', aiSources.current)
     console.log('[Config] Normalized aiSources.custom exists:', !!aiSources.custom)
     // Deep merge to ensure all nested defaults are applied
-    return {
+    const result: AppConfig = {
       ...DEFAULT_CONFIG,
       ...parsed,
       api: { ...DEFAULT_CONFIG.api, ...parsed.api },
@@ -936,42 +950,13 @@ export function getConfig(): AppConfig {
           }
         }
 
-        // Finally, scan ~/.claude/skills/ and merge any skills not already present
-        try {
-          const claudeSkillsDir = join(homedir(), '.claude', 'skills')
-          if (existsSync(claudeSkillsDir)) {
-            const entries = readdirSync(claudeSkillsDir, { withFileTypes: true })
-            for (const entry of entries) {
-              if (!entry.isDirectory()) continue
-              const skillName = entry.name
-              // Don't override skills already defined (built-in or user config)
-              if (skills[skillName]) continue
-              const skillDir = join(claudeSkillsDir, skillName)
-              const skillMdPath = join(skillDir, 'SKILL.md')
-              let description = ''
-              if (existsSync(skillMdPath)) {
-                const content = readFileSync(skillMdPath, 'utf-8')
-                const match = content.match(/^description:\s*(.+)$/m)
-                if (match) description = match[1].trim()
-              }
-              skills[skillName] = {
-                name: skillName,
-                path: skillDir,
-                type: 'directory',
-                description,
-                __builtIn: false
-              } as any
-            }
-          }
-        } catch (e) {
-          console.warn('[Config] Failed to scan ~/.claude/skills:', e)
-        }
-
         return skills
       })(),
       // analytics: keep as-is (managed by analytics.service.ts)
       analytics: parsed.analytics
     }
+    _configCache = result
+    return result
   } catch (error) {
     console.error('Failed to read config:', error)
     return DEFAULT_CONFIG
@@ -1019,6 +1004,7 @@ export function saveConfig(config: Partial<AppConfig>): AppConfig {
 
   const configPath = getConfigPath()
   writeFileSync(configPath, JSON.stringify(newConfig, null, 2))
+  _configCache = null  // Invalidate cache after write
 
   // Detect API config changes and notify subscribers
   // This allows agent.service to invalidate sessions when API config changes

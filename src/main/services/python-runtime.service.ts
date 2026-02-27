@@ -29,7 +29,11 @@ function debugLog(message: string) {
  * IMPORTANT: This function requires app.whenReady() to be completed in production mode
  * because it calls app.getPath('resources'). Do not call this during module initialization.
  */
+let _bundledPythonPathCache: string | null | undefined = undefined
+
 export function getBundledPythonPath(): string | null {
+  if (_bundledPythonPathCache !== undefined) return _bundledPythonPathCache
+
   const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
   const osPlatform = platform()
 
@@ -161,11 +165,13 @@ export function getBundledPythonPath(): string | null {
   if (existsSync(fullPath)) {
     debugLog(`[PythonRuntime] Found bundled Python at: ${fullPath}`)
     console.log(`[PythonRuntime] Found bundled Python at: ${fullPath}`)
+    _bundledPythonPathCache = fullPath
     return fullPath
   }
 
   debugLog(`[PythonRuntime] Bundled Python not found at: ${fullPath}`)
   console.warn(`[PythonRuntime] Bundled Python not found at: ${fullPath}`)
+  _bundledPythonPathCache = null
   return null
 }
 

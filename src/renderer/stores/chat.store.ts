@@ -113,6 +113,7 @@ interface ChatState {
   selectConversation: (conversationId: string) => void
   deleteConversation: (spaceId: string, conversationId: string) => Promise<boolean>
   renameConversation: (spaceId: string, conversationId: string, newTitle: string) => Promise<boolean>
+  loadMessageThoughts: (spaceId: string | null, conversationId: string | null, messageId: string) => Promise<Thought[]>
 
   // Messaging
   sendMessage: (content: string, images?: ImageAttachment[], aiBrowserEnabled?: boolean, thinkingEnabled?: boolean) => Promise<void>
@@ -388,12 +389,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     // Warm up V2 Session in background - non-blocking
     // When user sends a message, V2 Session is ready to avoid delay
-    try {
-      api.ensureSessionWarm(currentSpaceId, conversationId)
-        .catch((error) => console.error('[ChatStore] Session warm up failed:', error))
-    } catch (error) {
-      console.error('[ChatStore] Failed to trigger session warm up:', error)
-    }
+    api.ensureSessionWarm(currentSpaceId, conversationId)
+      .catch((error) => console.error('[ChatStore] Session warm up failed:', error))
   },
 
   // Delete conversation
@@ -486,6 +483,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
     } catch (error) {
       console.error('Failed to rename conversation:', error)
       return false
+    }
+  },
+
+  loadMessageThoughts: async (spaceId, conversationId, messageId) => {
+    if (!spaceId || !conversationId) return []
+    try {
+      const response = await api.getMessageThoughts(spaceId, conversationId, messageId)
+      if (response.success && Array.isArray(response.data)) {
+        return response.data as Thought[]
+      }
+      return []
+    } catch (error) {
+      console.error('Failed to load message thoughts:', error)
+      return []
     }
   },
 

@@ -98,12 +98,20 @@ const SANDBOX_CONFIG = {
  * to $TMPDIR and chokidar watching the entire tmpdir (which crashes on
  * macOS due to Unix socket files like CloudClient).
  */
+let _lastSettingsHash: string | null = null
+
 export function ensureClaudeConfigSettings(apiKey: string, baseUrl: string): void {
   const configDir = getClaudeConfigDir()
 
   // Create claude-config directory if it doesn't exist
   if (!existsSync(configDir)) {
     mkdirSync(configDir, { recursive: true })
+  }
+
+  // Skip write if nothing changed
+  const currentHash = `${apiKey}|${baseUrl}`
+  if (_lastSettingsHash === currentHash && existsSync(join(configDir, 'settings.json'))) {
+    return
   }
 
   const settingsFile = join(configDir, 'settings.json')
@@ -129,6 +137,7 @@ export function ensureClaudeConfigSettings(apiKey: string, baseUrl: string): voi
   settings.sandbox = SANDBOX_CONFIG
 
   writeFileSync(settingsFile, JSON.stringify(settings, null, 2))
+  _lastSettingsHash = currentHash
   console.log(`[SDK Config] ========================================`)
   console.log(`[SDK Config] Claude config settings.json updated:`)
   console.log(`[SDK Config]   File: ${settingsFile}`)

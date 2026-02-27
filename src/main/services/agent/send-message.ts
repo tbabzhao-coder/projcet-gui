@@ -199,15 +199,6 @@ export async function sendMessage(
       console.log(`[Agent][${conversationId}] MCP servers configured: ${mcpServerNames.join(', ')}`)
     }
 
-    // Sync skills to claude-config/skills/ directory before creating session
-    // CLI loads skills from CLAUDE_CONFIG_DIR/skills/
-    if (config.skills && Object.keys(config.skills).length > 0) {
-      console.log(`[Agent][${conversationId}] Skills configured:`, Object.keys(config.skills).join(', '))
-      syncSkillsToConfigDir(config.skills)
-    } else {
-      console.log(`[Agent][${conversationId}] No skills configured`)
-    }
-
     // Session config for rebuild detection (credentialsHash: rebuild when API key/URL changes)
     const sessionConfig: SessionConfig = {
       aiBrowserEnabled: !!aiBrowserEnabled,

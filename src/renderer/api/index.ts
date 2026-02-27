@@ -332,6 +332,17 @@ export const api = {
     )
   },
 
+  getMessageThoughts: async (
+    spaceId: string,
+    conversationId: string,
+    messageId: string
+  ): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.project4.getMessageThoughts(spaceId, conversationId, messageId)
+    }
+    return httpRequest('GET', `/api/spaces/${spaceId}/conversations/${conversationId}/messages/${messageId}/thoughts`)
+  },
+
   // ===== Agent =====
   sendMessage: async (request: {
     spaceId: string

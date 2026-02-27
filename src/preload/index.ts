@@ -62,6 +62,7 @@ export interface Project4API {
     conversationId: string,
     updates: Record<string, unknown>
   ) => Promise<IpcResponse>
+  getMessageThoughts: (spaceId: string, conversationId: string, messageId: string) => Promise<IpcResponse>
 
   // Agent
   sendMessage: (request: {
@@ -343,6 +344,8 @@ const api: Project4API = {
     ipcRenderer.invoke('conversation:add-message', spaceId, conversationId, message),
   updateLastMessage: (spaceId, conversationId, updates) =>
     ipcRenderer.invoke('conversation:update-last-message', spaceId, conversationId, updates),
+  getMessageThoughts: (spaceId, conversationId, messageId) =>
+    ipcRenderer.invoke('conversation:get-message-thoughts', spaceId, conversationId, messageId),
 
   // Agent
   sendMessage: (request) => ipcRenderer.invoke('agent:send-message', request),

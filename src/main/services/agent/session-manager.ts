@@ -265,14 +265,6 @@ export async function ensureSessionWarm(
     mcpServers: enabledMcpServers
   })
 
-  // Sync skills to claude-config/skills/ directory before creating session
-  if (config.skills && Object.keys(config.skills).length > 0) {
-    console.log(`[Agent][${conversationId}] Skills configured (warm):`, Object.keys(config.skills).join(', '))
-    syncSkillsToConfigDir(config.skills)
-  } else {
-    console.log(`[Agent][${conversationId}] No skills configured (warm)`)
-  }
-
   // Session config for rebuild detection (must match sendMessage so reuse/rebuild is consistent)
   const sessionConfig: SessionConfig = {
     aiBrowserEnabled: false,  // Warm doesn't know request-level aiBrowser; sendMessage will rebuild if true
@@ -425,4 +417,18 @@ export function getActiveSession(conversationId: string): SessionState | undefin
 // This is called once when the module loads
 onApiConfigChange(() => {
   invalidateAllSessions()
+  // Re-sync skills when config changes (e.g. user adds/removes a skill)
+  const config = getConfig()
+  if (config.skills && Object.keys(config.skills).length > 0) {
+    syncSkillsToConfigDir(config.skills)
+  }
 })
+
+// Sync skills once on module load (app startup)
+// This ensures skills are available before the first warm-up or send
+;(() => {
+  const config = getConfig()
+  if (config.skills && Object.keys(config.skills).length > 0) {
+    syncSkillsToConfigDir(config.skills)
+  }
+})()
