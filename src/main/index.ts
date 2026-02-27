@@ -109,6 +109,7 @@ import { stopOpenAICompatRouter } from './openai-compat-router'
 import { initAnalytics } from './services/analytics'
 import { registerProtocols } from './services/protocol.service'
 import { setMainWindow } from './services/window.service'
+import { flushAllPendingIndexWrites } from './services/conversation.service'
 
 let mainWindow: BrowserWindow | null = null
 let isAppQuitting = false
@@ -416,6 +417,7 @@ async function shutdownServices(): Promise<void> {
     return
   }
   hasShutdown = true
+  flushAllPendingIndexWrites()
   await disableRemoteAccess().catch(console.error)
   await stopOpenAICompatRouter().catch(console.error)
   await cleanupExtendedServices().catch(console.error)

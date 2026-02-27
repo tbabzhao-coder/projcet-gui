@@ -855,7 +855,8 @@ async function processMessageStream(
       updateLastMessage(spaceId, conversationId, {
         content: contentToSave,
         thoughts: hasThoughts ? [...sessionState.thoughts] : undefined,
-        tokenUsage: tokenUsage || undefined
+        tokenUsage: tokenUsage || undefined,
+        timestamp: new Date().toISOString()
       })
       // Notify frontend so bubble shows placeholder immediately (avoids empty bubble before reload)
       if (contentToSave) {
