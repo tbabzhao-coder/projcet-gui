@@ -266,6 +266,11 @@ export function buildSdkEnv(params: SdkEnvParams): Record<string, string | numbe
     // Project4's own config dir (avoid conflicts with CC's ~/.claude)
     CLAUDE_CONFIG_DIR: getClaudeConfigDir(),
 
+    // Windows: Git Bash path for CLI subprocess (stripped by CLAUDE_ prefix filter above, must re-add explicitly)
+    ...(process.env.CLAUDE_CODE_GIT_BASH_PATH
+      ? { CLAUDE_CODE_GIT_BASH_PATH: process.env.CLAUDE_CODE_GIT_BASH_PATH }
+      : {}),
+
     // Localhost bypasses proxy (for OpenAI compat router)
     NO_PROXY: 'localhost,127.0.0.1',
     no_proxy: 'localhost,127.0.0.1',

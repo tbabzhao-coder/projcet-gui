@@ -17,7 +17,6 @@
  *   - Overlay: Floating UI elements (optional)
  *   - Search: Global search (optional)
  *   - Performance: Developer monitoring tools (dev only)
- *   - GitBash: Windows Git Bash setup (Windows optional)
  */
 
 import { registerOnboardingHandlers } from '../ipc/onboarding'
@@ -27,7 +26,6 @@ import { registerAIBrowserHandlers, cleanupAIBrowserHandlers } from '../ipc/ai-b
 import { registerOverlayHandlers, cleanupOverlayHandlers } from '../ipc/overlay'
 import { initializeSearchHandlers, cleanupSearchHandlers } from '../ipc/search'
 import { registerPerfHandlers } from '../ipc/perf'
-import { registerGitBashHandlers, initializeGitBashOnStartup } from '../ipc/git-bash'
 import { registerUpdaterHandlers } from '../services/updater.service'
 import { cleanupAllCaches } from '../services/artifact-cache.service'
 import { markExtendedServicesReady } from './state'
@@ -79,9 +77,6 @@ export function initializeExtendedServices(): void {
   // Performance: Developer monitoring tools
   registerPerfHandlers(mainWindow)
 
-  // GitBash: Windows Git Bash detection and setup
-  registerGitBashHandlers()
-
   // Updater: Auto-update functionality
   registerUpdaterHandlers()
 
@@ -89,17 +84,6 @@ export function initializeExtendedServices(): void {
   registerFeishuHandlers()
   initializeFeishuService()
     .catch(err => console.error('[Bootstrap] Feishu init failed:', err))
-
-  // Windows-specific: Initialize Git Bash in background
-  if (process.platform === 'win32') {
-    initializeGitBashOnStartup()
-      .then((status) => {
-        console.log('[Bootstrap] Git Bash status:', status)
-      })
-      .catch((err) => {
-        console.error('[Bootstrap] Git Bash initialization failed:', err)
-      })
-  }
 
   const duration = performance.now() - start
   console.log(`[Bootstrap] Extended services registered in ${duration.toFixed(1)}ms`)
