@@ -187,6 +187,27 @@ export interface AppConfig {
   mcpServers: McpServersConfig;  // MCP servers configuration
   skills?: SkillsConfig;  // Skills configuration (compatible with Claude Code CLI format)
   isFirstLaunch: boolean;
+  // Feishu/Lark integration
+  feishu?: FeishuConfig;
+}
+
+// ============================================
+// Feishu Integration Types
+// ============================================
+
+export interface FeishuConfig {
+  enabled: boolean;
+  appId: string;
+  appSecret: string;
+  domain: 'feishu' | 'lark';
+}
+
+export type FeishuConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+
+export interface FeishuStatus {
+  status: FeishuConnectionStatus;
+  error?: string;
+  config?: FeishuConfig | null;
 }
 
 // ============================================

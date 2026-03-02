@@ -25,6 +25,7 @@ export interface Project4API {
 
   // Space
   getTempSpace: () => Promise<IpcResponse>
+  getFeishuSpace: () => Promise<IpcResponse>
   listSpaces: () => Promise<IpcResponse>
   createSpace: (input: { name: string; icon: string; customPath?: string }) => Promise<IpcResponse>
   deleteSpace: (spaceId: string) => Promise<IpcResponse>
@@ -271,6 +272,17 @@ export interface Project4API {
     extendedReadyAt: number
   }>>
   onBootstrapExtendedReady: (callback: (data: { timestamp: number; duration: number }) => void) => () => void
+
+  // Feishu Integration
+  feishuGetStatus: () => Promise<IpcResponse>
+  feishuSaveConfig: (config: {
+    enabled: boolean
+    appId: string
+    appSecret: string
+    domain: 'feishu' | 'lark'
+  }) => Promise<IpcResponse>
+  feishuStop: () => Promise<IpcResponse>
+  onFeishuStatusChange: (callback: (data: unknown) => void) => () => void
 }
 
 interface IpcResponse<T = unknown> {
@@ -318,6 +330,7 @@ const api: Project4API = {
 
   // Space
   getTempSpace: () => ipcRenderer.invoke('space:get-project4'),
+  getFeishuSpace: () => ipcRenderer.invoke('space:get-feishu'),
   listSpaces: () => ipcRenderer.invoke('space:list'),
   createSpace: (input) => ipcRenderer.invoke('space:create', input),
   deleteSpace: (spaceId) => ipcRenderer.invoke('space:delete', spaceId),
@@ -491,6 +504,12 @@ const api: Project4API = {
   // Bootstrap lifecycle
   getBootstrapStatus: () => ipcRenderer.invoke('bootstrap:get-status'),
   onBootstrapExtendedReady: (callback) => createEventListener('bootstrap:extended-ready', callback as (data: unknown) => void),
+
+  // Feishu Integration
+  feishuGetStatus: () => ipcRenderer.invoke('feishu:get-status'),
+  feishuSaveConfig: (config) => ipcRenderer.invoke('feishu:save-config', config),
+  feishuStop: () => ipcRenderer.invoke('feishu:stop'),
+  onFeishuStatusChange: (callback) => createEventListener('feishu:status-change', callback),
 }
 
 contextBridge.exposeInMainWorld('project4', api)

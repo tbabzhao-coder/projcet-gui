@@ -15,6 +15,7 @@ import { getSpace } from '../space.service'
 import { getAISourceManager } from '../ai-sources'
 import { broadcastToAll, broadcastToWebSocket } from '../../http/websocket'
 import { onMainWindowChange } from '../window.service'
+import { onAgentEvent as onFeishuAgentEvent } from '../feishu.service'
 import type { ApiCredentials, MainWindowRef } from './types'
 
 // ============================================
@@ -396,6 +397,13 @@ export function sendToRenderer(
     broadcastToWebSocket(channel, eventData)
   } catch (error) {
     // WebSocket module might not be initialized yet, ignore
+  }
+
+  // 3. Forward to Feishu service for feishu-prefixed conversations
+  try {
+    onFeishuAgentEvent(channel, conversationId, eventData)
+  } catch (error) {
+    // Feishu module might not be initialized yet, ignore
   }
 }
 

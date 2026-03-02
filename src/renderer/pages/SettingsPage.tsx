@@ -29,6 +29,7 @@ import { CheckCircle2, XCircle, ArrowLeft, Eye, EyeOff } from '../components/ico
 import { Header } from '../components/layout/Header'
 import { McpServerList } from '../components/settings/McpServerList'
 import { SkillList } from '../components/settings/SkillList'
+import { FeishuSettings } from '../components/settings/FeishuSettings'
 import { useTranslation, getCurrentLanguage } from '../i18n'
 import { Loader2, LogOut, Plus, Check, Globe, Key, MessageSquare, type LucideIcon, RefreshCw, ChevronDown, Edit2, Trash2 } from 'lucide-react'
 
@@ -1253,6 +1254,17 @@ export function SettingsPage() {
                 ⚠️ {t('Configuration changes will take effect after starting a new conversation')}
               </p> */}
             </div>
+          </section>
+
+          {/* Feishu Integration Section */}
+          <section className="bg-card rounded-xl border border-border p-6">
+            <FeishuSettings
+              config={(config as any)?.feishu || null}
+              onSave={async (feishuConfig) => {
+                await api.setConfig({ feishu: feishuConfig } as any)
+                setConfig({ ...config, feishu: feishuConfig } as any)
+              }}
+            />
           </section>
 
           {/* Remote Access Section - DISABLED */}

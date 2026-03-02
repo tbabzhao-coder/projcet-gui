@@ -151,6 +151,13 @@ export const api = {
     return httpRequest('GET', '/api/spaces/project4')
   },
 
+  getFeishuSpace: async (): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.project4.getFeishuSpace()
+    }
+    return httpRequest('GET', '/api/spaces/feishu')
+  },
+
   listSpaces: async (): Promise<ApiResponse> => {
     if (isElectron()) {
       return window.project4.listSpaces()
@@ -1115,6 +1122,43 @@ export const api = {
       return () => {}
     }
     return window.project4.onBootstrapExtendedReady(callback)
+  },
+
+  // ============================================
+  // Feishu Integration
+  // ============================================
+
+  feishuGetStatus: async () => {
+    if (!isElectron()) {
+      return { success: false, error: 'Feishu is only available in desktop mode' }
+    }
+    return window.project4.feishuGetStatus()
+  },
+
+  feishuSaveConfig: async (config: {
+    enabled: boolean
+    appId: string
+    appSecret: string
+    domain: 'feishu' | 'lark'
+  }) => {
+    if (!isElectron()) {
+      return { success: false, error: 'Feishu is only available in desktop mode' }
+    }
+    return window.project4.feishuSaveConfig(config)
+  },
+
+  feishuStop: async () => {
+    if (!isElectron()) {
+      return { success: false, error: 'Feishu is only available in desktop mode' }
+    }
+    return window.project4.feishuStop()
+  },
+
+  onFeishuStatusChange: (callback: (data: unknown) => void) => {
+    if (!isElectron()) {
+      return () => {}
+    }
+    return window.project4.onFeishuStatusChange(callback)
   },
 }
 

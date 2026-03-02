@@ -32,6 +32,8 @@ import { registerUpdaterHandlers } from '../services/updater.service'
 import { cleanupAllCaches } from '../services/artifact-cache.service'
 import { markExtendedServicesReady } from './state'
 import { getMainWindow, sendToRenderer } from '../services/window.service'
+import { registerFeishuHandlers } from '../ipc/feishu'
+import { initializeFeishuService, stopFeishuService } from '../services/feishu.service'
 
 /**
  * Initialize extended services after window is visible
@@ -83,6 +85,11 @@ export function initializeExtendedServices(): void {
   // Updater: Auto-update functionality
   registerUpdaterHandlers()
 
+  // Feishu: Register IPC handlers and initialize service
+  registerFeishuHandlers()
+  initializeFeishuService()
+    .catch(err => console.error('[Bootstrap] Feishu init failed:', err))
+
   // Windows-specific: Initialize Git Bash in background
   if (process.platform === 'win32') {
     initializeGitBashOnStartup()
@@ -127,6 +134,9 @@ export async function cleanupExtendedServices(): Promise<void> {
 
   // Artifact Cache: Close file watchers and clear caches
   await cleanupAllCaches()
+
+  // Feishu: Stop WebSocket connection
+  await stopFeishuService()
 
   console.log('[Bootstrap] Extended services cleaned up')
 }
