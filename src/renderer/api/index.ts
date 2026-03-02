@@ -137,6 +137,13 @@ export const api = {
     return httpRequest('GET', '/api/spaces/project4')
   },
 
+  getFeishuSpace: async (): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.project4.getFeishuSpace()
+    }
+    return httpRequest('GET', '/api/spaces/feishu')
+  },
+
   listSpaces: async (): Promise<ApiResponse> => {
     if (isElectron()) {
       return window.project4.listSpaces()

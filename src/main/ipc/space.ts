@@ -7,6 +7,7 @@ import { readdirSync, statSync } from 'fs'
 import { join, relative } from 'path'
 import {
   getTempSpace,
+  getFeishuSpace,
   listSpaces,
   createSpace,
   deleteSpace,
@@ -33,6 +34,17 @@ export function registerSpaceHandlers(): void {
   ipcMain.handle('space:get-project4', async () => {
     try {
       const space = getTempSpace()
+      return { success: true, data: space }
+    } catch (error: unknown) {
+      const err = error as Error
+      return { success: false, error: err.message }
+    }
+  })
+
+  // Get Feishu space
+  ipcMain.handle('space:get-feishu', async () => {
+    try {
+      const space = getFeishuSpace()
       return { success: true, data: space }
     } catch (error: unknown) {
       const err = error as Error

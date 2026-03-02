@@ -687,6 +687,10 @@ export function getTempSpacePath(): string {
   return join(getProject4Dir(), 'temp')
 }
 
+export function getFeishuSpacePath(): string {
+  return join(getProject4Dir(), 'feishu')
+}
+
 export function getSpacesDir(): string {
   return join(getProject4Dir(), 'spaces')
 }
@@ -799,12 +803,15 @@ function getAiSourcesSignature(aiSources?: AISourcesConfig): string {
 export async function initializeApp(): Promise<void> {
   const project4Dir = getProject4Dir()
   const tempDir = getTempSpacePath()
+  const feishuDir = getFeishuSpacePath()
   const spacesDir = getSpacesDir()
   const tempArtifactsDir = join(tempDir, 'artifacts')
   const tempConversationsDir = join(tempDir, 'conversations')
+  const feishuArtifactsDir = join(feishuDir, 'artifacts')
+  const feishuConversationsDir = join(feishuDir, 'conversations')
 
   // Create directories if they don't exist
-  const dirs = [project4Dir, tempDir, spacesDir, tempArtifactsDir, tempConversationsDir]
+  const dirs = [project4Dir, tempDir, spacesDir, tempArtifactsDir, tempConversationsDir, feishuDir, feishuArtifactsDir, feishuConversationsDir]
   for (const dir of dirs) {
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true })

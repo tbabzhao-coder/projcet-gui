@@ -23,6 +23,7 @@ export interface Project4API {
 
   // Space
   getTempSpace: () => Promise<IpcResponse>
+  getFeishuSpace: () => Promise<IpcResponse>
   listSpaces: () => Promise<IpcResponse>
   createSpace: (input: { name: string; icon: string; customPath?: string }) => Promise<IpcResponse>
   deleteSpace: (spaceId: string) => Promise<IpcResponse>
@@ -324,6 +325,7 @@ const api: Project4API = {
 
   // Space
   getTempSpace: () => ipcRenderer.invoke('space:get-project4'),
+  getFeishuSpace: () => ipcRenderer.invoke('space:get-feishu'),
   listSpaces: () => ipcRenderer.invoke('space:list'),
   createSpace: (input) => ipcRenderer.invoke('space:create', input),
   deleteSpace: (spaceId) => ipcRenderer.invoke('space:delete', spaceId),

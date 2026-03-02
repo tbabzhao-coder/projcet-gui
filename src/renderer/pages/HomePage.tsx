@@ -29,7 +29,7 @@ const isWebMode = api.isRemoteMode()
 export function HomePage() {
   const { t } = useTranslation()
   const { setView } = useAppStore()
-  const { project4Space, spaces, loadSpaces, setCurrentSpace, createSpace, updateSpace, deleteSpace } = useSpaceStore()
+  const { project4Space, feishuSpace, spaces, loadSpaces, setCurrentSpace, createSpace, updateSpace, deleteSpace } = useSpaceStore()
 
   // Dialog state
   const [showCreateDialog, setShowCreateDialog] = useState(false)
@@ -265,7 +265,7 @@ export function HomePage() {
         {/* Space Guide - DISABLED */}
         {/* <SpaceGuide /> */}
 
-        {spaces.length === 0 ? (
+        {spaces.length === 0 && !feishuSpace ? (
           <div className="text-center py-20 animate-fade-in">
             <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-card border border-border flex items-center justify-center">
               <Folder className="w-8 h-8 text-foreground-tertiary" />
@@ -275,6 +275,27 @@ export function HomePage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* Feishu Space Card */}
+            {feishuSpace && (
+              <div
+                key={feishuSpace.id}
+                onClick={() => handleSpaceClick(feishuSpace)}
+                className="relative p-6 rounded-2xl bg-card border border-border shadow-md hover:shadow-lg cursor-pointer group animate-fade-in transition-all duration-300 ease-out"
+              >
+                <div className="mb-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-base">💬</span>
+                    <h4 className="text-base font-semibold text-foreground">{feishuSpace.name}</h4>
+                  </div>
+                  <p className="text-sm text-foreground-secondary">
+                    {formatTimeAgo(feishuSpace.updatedAt)} {t('active')}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 text-xs text-foreground-tertiary">
+                  <span>{t('{{conversations}} conversations', { conversations: feishuSpace.stats.conversationCount })}</span>
+                </div>
+              </div>
+            )}
             {spaces.map((space, index) => (
               <div
                 key={space.id}

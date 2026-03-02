@@ -10,7 +10,7 @@
 import { shell } from 'electron'
 import { join, basename } from 'path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync, rmSync } from 'fs'
-import { getProject4Dir, getTempSpacePath, getSpacesDir } from './config.service'
+import { getProject4Dir, getTempSpacePath, getFeishuSpacePath, getSpacesDir } from './config.service'
 import { v4 as uuidv4 } from 'uuid'
 
 // Re-export config helper for backward compatibility with existing imports
@@ -114,12 +114,29 @@ const PROJECT4_TEMP_SPACE: Space = {
   }
 }
 
+const FEISHU_SPACE: Space = {
+  id: 'feishu',
+  name: '飞书',
+  icon: 'message-circle',
+  path: '',
+  isTemp: true,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  stats: {
+    artifactCount: 0,
+    conversationCount: 0
+  }
+}
+
 // Get all valid space paths (for security checks)
 export function getAllSpacePaths(): string[] {
   const paths: string[] = []
 
   // Add temp space path
   paths.push(getTempSpacePath())
+
+  // Add feishu space path
+  paths.push(getFeishuSpacePath())
 
   // Add default spaces directory
   const spacesDir = getSpacesDir()
@@ -270,6 +287,32 @@ export function getTempSpace(): Space {
   return {
     ...PROJECT4_TEMP_SPACE,
     path: tempPath,
+    stats,
+    preferences
+  }
+}
+
+// Get Feishu space
+export function getFeishuSpace(): Space {
+  const feishuPath = getFeishuSpacePath()
+  const stats = getSpaceStats(feishuPath)
+
+  // Load preferences if they exist
+  const metaPath = join(feishuPath, '.project4', 'meta.json')
+  let preferences: SpacePreferences | undefined
+
+  if (existsSync(metaPath)) {
+    try {
+      const meta: SpaceMeta = JSON.parse(readFileSync(metaPath, 'utf-8'))
+      preferences = meta.preferences
+    } catch {
+      // Ignore parse errors
+    }
+  }
+
+  return {
+    ...FEISHU_SPACE,
+    path: feishuPath,
     stats,
     preferences
   }
@@ -426,6 +469,10 @@ export function deleteSpace(spaceId: string): boolean {
 export function getSpace(spaceId: string): Space | null {
   if (spaceId === 'project4-temp') {
     return getTempSpace()
+  }
+
+  if (spaceId === 'feishu') {
+    return getFeishuSpace()
   }
 
   const spaces = listSpaces()

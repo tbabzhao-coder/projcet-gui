@@ -207,8 +207,8 @@ async function handleFeishuMessage(event: any): Promise<void> {
     chatIdMap.set(conversationId, chatId)
     pendingCallbacks.set(conversationId, chatId)
 
-    // Ensure conversation exists in the temp space
-    const spaceId = 'project4-temp'
+    // Ensure conversation exists in the feishu space
+    const spaceId = 'feishu'
     createConversationWithId(spaceId, conversationId, `Feishu: ${text.substring(0, 30)}`)
 
     // Trigger the agent via sendMessage (same as desktop UI)
