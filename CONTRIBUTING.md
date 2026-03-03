@@ -21,7 +21,7 @@
 
 ### 报告 Bug
 
-如果你发现了 Bug，请通过 [GitHub Issues](https://github.com/yourusername/project4/issues) 提交，并包含以下信息：
+如果你发现了 Bug，请通过 [GitHub Issues](https://github.com/tbabzhao-coder/projcet-gui/issues) 提交，并包含以下信息：
 
 - **Bug 描述**：清晰简洁地描述问题
 - **复现步骤**：详细的复现步骤
@@ -59,7 +59,7 @@
 
 ### 提出功能建议
 
-我们欢迎新功能建议！请通过 [GitHub Issues](https://github.com/yourusername/project4/issues) 提交，并包含：
+我们欢迎新功能建议！请通过 [GitHub Issues](https://github.com/tbabzhao-coder/projcet-gui/issues) 提交，并包含：
 
 - **功能描述**：清晰描述你想要的功能
 - **使用场景**：为什么需要这个功能？它解决什么问题？
@@ -283,8 +283,8 @@ npm run i18n:translate   # 翻译文本
 如果你有任何问题：
 
 - 查看 [文档](./docs/)
-- 搜索 [已有 Issues](https://github.com/yourusername/project4/issues)
-- 在 [Discussions](https://github.com/yourusername/project4/discussions) 提问
+- 搜索 [已有 Issues](https://github.com/tbabzhao-coder/projcet-gui/issues)
+- 在 [Discussions](https://github.com/tbabzhao-coder/projcet-gui/discussions) 提问
 - 发送邮件到 your-email@example.com
 
 ## 许可证

@@ -283,7 +283,21 @@ export async function sendMessage(
       }
     }
 
-    if (stderrBuffer && !errorMessage.includes('Command execution')) {
+    // Check for context window overflow errors
+    const isContextOverflow = errorMessage.includes('input length must be in range') ||
+                              errorMessage.includes('202752') ||
+                              errorMessage.includes('context') && errorMessage.includes('overflow') ||
+                              stderrBuffer?.includes('input length must be in range')
+
+    if (isContextOverflow) {
+      errorMessage = 'Context window exceeded. The conversation has accumulated too much context.\n\n' +
+                    'Solutions:\n' +
+                    '1. Create a new conversation (recommended)\n' +
+                    '2. Delete this conversation and start fresh\n' +
+                    '3. Restart the application\n\n' +
+                    'Tip: Long conversations with many tool calls or large file reads can quickly fill the context window.'
+      console.log(`[Agent][${conversationId}] Context overflow detected, closing session`)
+    } else if (stderrBuffer && !errorMessage.includes('Command execution')) {
       // Try to extract the most useful error info from stderr
       const mcpErrorMatch = stderrBuffer.match(/Error: Invalid MCP configuration:[\s\S]*?(?=\n\s*at |$)/m)
       const genericErrorMatch = stderrBuffer.match(/Error: [\s\S]*?(?=\n\s*at |$)/m)

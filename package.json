@@ -108,6 +108,7 @@
     "i18next": "^25.7.4",
     "ignore": "^7.0.5",
     "lucide-react": "^0.555.0",
+    "pdf-tools-mcp": "^0.3.5",
     "qrcode": "^1.5.4",
     "quick-chart-mcp": "^1.0.14",
     "react": "^18.2.0",

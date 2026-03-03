@@ -64,7 +64,7 @@ Project4 预装了以下 MCP 服务器：
 
 ```bash
 # 克隆仓库
-git clone https://github.com/yourusername/project4.git
+git clone https://github.com/tbabzhao-coder/projcet-gui.git
 cd project4
 
 # 安装依赖
@@ -193,8 +193,8 @@ my-skill/
 
 ## 📮 支持与反馈
 
-- **问题反馈**：[GitHub Issues](https://github.com/yourusername/project4/issues)
-- **讨论交流**：[GitHub Discussions](https://github.com/yourusername/project4/discussions)
+- **问题反馈**：[GitHub Issues](https://github.com/tbabzhao-coder/projcet-gui/issues)
+- **讨论交流**：[GitHub Discussions](https://github.com/tbabzhao-coder/projcet-gui/discussions)
 - **邮件联系**：your-email@example.com
 
 ---

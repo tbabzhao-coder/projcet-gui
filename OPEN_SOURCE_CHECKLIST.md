@@ -34,7 +34,7 @@
 
 ```markdown
 # 在 README.md 中
-- [ ] 将 `https://github.com/yourusername/project4` 替换为实际仓库地址
+- [ ] 将 `https://github.com/tbabzhao-coder/projcet-gui` 替换为实际仓库地址
 - [ ] 将 `your-email@example.com` 替换为实际联系邮箱
 ```
 
@@ -42,7 +42,7 @@
 
 ```markdown
 # 在 CONTRIBUTING.md 中
-- [ ] 将 `https://github.com/yourusername/project4` 替换为实际仓库地址
+- [ ] 将 `https://github.com/tbabzhao-coder/projcet-gui` 替换为实际仓库地址
 - [ ] 将 `your-email@example.com` 替换为实际联系邮箱
 ```
 
@@ -109,7 +109,7 @@
 ```bash
 # 替换仓库地址（macOS/Linux）
 find . -type f \( -name "*.md" -o -name "*.yml" \) -not -path "*/node_modules/*" -not -path "*/.git/*" \
-  -exec sed -i '' 's|https://github.com/yourusername/project4|https://github.com/tbabzhao-coder/projcet-gui|g' {} +
+  -exec sed -i '' 's|https://github.com/tbabzhao-coder/projcet-gui|https://github.com/tbabzhao-coder/projcet-gui|g' {} +
 
 # 替换邮箱地址（macOS/Linux）
 find . -type f \( -name "*.md" -o -name "*.yml" \) -not -path "*/node_modules/*" -not -path "*/.git/*" \
@@ -121,7 +121,7 @@ find . -type f \( -name "*.md" -o -name "*.yml" \) -not -path "*/node_modules/*"
 ```powershell
 # 替换仓库地址
 Get-ChildItem -Recurse -Include *.md,*.yml | Where-Object { $_.FullName -notmatch 'node_modules|\.git' } | ForEach-Object {
-    (Get-Content $_.FullName) -replace 'https://github.com/yourusername/project4', 'https://github.com/tbabzhao-coder/projcet-gui' | Set-Content $_.FullName
+    (Get-Content $_.FullName) -replace 'https://github.com/tbabzhao-coder/projcet-gui', 'https://github.com/tbabzhao-coder/projcet-gui' | Set-Content $_.FullName
 }
 
 # 替换邮箱地址
