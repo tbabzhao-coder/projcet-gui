@@ -6,6 +6,23 @@
   "main": "./out/main/index.mjs",
   "author": "Project4 Team",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tbabzhao-coder/projcet-gui.git"
+  },
+  "homepage": "https://github.com/tbabzhao-coder/projcet-gui#readme",
+  "bugs": {
+    "url": "https://github.com/tbabzhao-coder/projcet-gui/issues"
+  },
+  "keywords": [
+    "ai",
+    "claude",
+    "productivity",
+    "assistant",
+    "electron",
+    "mcp",
+    "automation"
+  ],
   "scripts": {
     "dev": "cross-env PROJECT4_DATA_DIR=~/.project4-dev electron-vite dev",
     "build": "electron-vite build",
