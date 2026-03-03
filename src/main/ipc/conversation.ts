@@ -13,6 +13,7 @@ import {
   updateLastMessage,
   getMessageThoughts
 } from '../services/conversation.service'
+import { closeV2Session } from '../services/agent'
 
 export function registerConversationHandlers(): void {
   // List conversations for a space
@@ -66,6 +67,12 @@ export function registerConversationHandlers(): void {
   ipcMain.handle('conversation:delete', async (_event, spaceId: string, conversationId: string) => {
     try {
       const result = deleteConversation(spaceId, conversationId)
+
+      // Clean up V2 Session to prevent memory leak and context accumulation
+      // When a conversation is deleted, its associated session should be closed immediately
+      closeV2Session(conversationId)
+      console.log(`[Conversation] Deleted conversation and closed V2 session: ${conversationId}`)
+
       return { success: true, data: result }
     } catch (error: unknown) {
       const err = error as Error
