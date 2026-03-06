@@ -163,7 +163,56 @@ module.exports = async function(context) {
   console.log('');
 
   // ============================================================================
-  // Part 2: macOS 专业 ad-hoc 签名
+  // Part 2: Windows 图标替换 (rcedit)
+  // ============================================================================
+
+  if (electronPlatformName === 'win32') {
+    console.log('');
+    console.log('========================================');
+    console.log('[afterPack] Replacing Windows exe icon');
+    console.log('========================================');
+
+    const exeName = `${context.packager.appInfo.productFilename}.exe`;
+    const exePath = path.join(appOutDir, exeName);
+    const icoPath = path.join(__dirname, '..', 'resources', 'icon.ico');
+
+    // 在 electron-builder 缓存中查找 rcedit
+    const cacheDir = path.join(process.env.LOCALAPPDATA || '', 'electron-builder', 'Cache', 'winCodeSign');
+    let rceditPath = null;
+
+    if (fs.existsSync(cacheDir)) {
+      const entries = fs.readdirSync(cacheDir);
+      for (const entry of entries) {
+        const candidate = path.join(cacheDir, entry, 'rcedit-x64.exe');
+        if (fs.existsSync(candidate)) {
+          rceditPath = candidate;
+          break;
+        }
+      }
+    }
+
+    if (rceditPath && fs.existsSync(exePath) && fs.existsSync(icoPath)) {
+      try {
+        console.log(`Exe: ${exePath}`);
+        console.log(`Icon: ${icoPath}`);
+        console.log(`Rcedit: ${rceditPath}`);
+        execSync(`"${rceditPath}" "${exePath}" --set-icon "${icoPath}"`, { stdio: 'inherit' });
+        console.log('✓ Icon replaced successfully');
+      } catch (error) {
+        console.error('✗ Icon replacement failed:', error.message);
+      }
+    } else {
+      if (!rceditPath) console.log('✗ rcedit-x64.exe not found in cache');
+      if (!fs.existsSync(exePath)) console.log(`✗ ${exeName} not found`);
+      if (!fs.existsSync(icoPath)) console.log('✗ icon.ico not found');
+    }
+
+    console.log('========================================');
+    console.log('');
+  }
+
+  // ============================================================================
+  // Part 3: macOS 专业 ad-hoc 签名
   // ============================================================================
 
   // Only process macOS
