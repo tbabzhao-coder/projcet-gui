@@ -1,0 +1,41 @@
+{
+  "name": "pdf-tools-mcp",
+  "version": "0.3.5",
+  "description": "PDF Tools MCP server with OCR capabilities - Convert PDFs to images, extract text with OCR, extract images, and metadata",
+  "bin": {
+    "pdf-tools-mcp": "bin/pdf-tools-mcp.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "pdf",
+    "pymupdf",
+    "ocr",
+    "tesseract",
+    "opencv",
+    "tools",
+    "cli"
+  ],
+  "author": "",
+  "license": "MIT",
+  "files": [
+    "bin/",
+    "pdf_tools.py",
+    "pdf_tools_mcp_adapter.py",
+    "pdf_tools_mcp_server_official.py",
+    "copy_cover_closing.py",
+    "run_mcp.py",
+    "requirements.txt",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "pack:dry": "npm pack --dry-run",
+    "postinstall": "python -m pip install -r requirements.txt 2>/dev/null || python3 -m pip install -r requirements.txt 2>/dev/null || pip install -r requirements.txt 2>/dev/null || echo 'Warning: Could not install Python dependencies. Please run: pip install -r requirements.txt'"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

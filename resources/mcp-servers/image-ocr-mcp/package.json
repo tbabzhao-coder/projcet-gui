@@ -1,0 +1,22 @@
+{
+  "name": "image-ocr-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for image OCR using Tesseract.js",
+  "type": "module",
+  "main": "index.js",
+  "bin": {
+    "image-ocr-mcp": "index.js"
+  },
+  "keywords": [
+    "mcp",
+    "ocr",
+    "tesseract",
+    "image-recognition"
+  ],
+  "author": "Project4 Team",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "tesseract.js": "^7.0.0"
+  }
+}

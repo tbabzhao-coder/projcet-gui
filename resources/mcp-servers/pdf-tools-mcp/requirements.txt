@@ -1,0 +1,5 @@
+pymupdf
+opencv-python
+pytesseract
+pillow
+numpy

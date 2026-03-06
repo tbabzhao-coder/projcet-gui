@@ -1,0 +1,18 @@
+diff --git a/node_modules/pdf-tools-mcp/__pycache__/pdf_tools.cpython-312.pyc b/node_modules/pdf-tools-mcp/__pycache__/pdf_tools.cpython-312.pyc
+new file mode 100644
+index 0000000..5da73bd
+Binary files /dev/null and b/node_modules/pdf-tools-mcp/__pycache__/pdf_tools.cpython-312.pyc differ
+diff --git a/node_modules/pdf-tools-mcp/pdf_tools.py b/node_modules/pdf-tools-mcp/pdf_tools.py
+index ad2e276..94966ec 100644
+--- a/node_modules/pdf-tools-mcp/pdf_tools.py
++++ b/node_modules/pdf-tools-mcp/pdf_tools.py
+@@ -372,8 +372,7 @@ def extract_image_text_with_ocr(image_path: str, output_folder: str = None):
+             for psm_mode, psm_name, config in psm_configs:
+                 try:
+                     # Enhanced character whitelist for better accuracy
+-                    custom_config = f'{config} -c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.,()[]{{}}:;-_+=/*\|@#$%^&*<>?~` 	
+-'
++                    custom_config = f'{config} -c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.,()[]{{}}:;-_+=/*\\|@#$%^&*<>?~`'
+                     
+                     # Get detailed OCR data
+                     data = pytesseract.image_to_data(pil_image, config=custom_config, 
