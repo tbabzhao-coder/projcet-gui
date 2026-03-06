@@ -122,6 +122,7 @@
     "rehype-raw": "^7.0.0",
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^2.2.0",
+    "tesseract.js": "^7.0.0",
     "uuid": "^13.0.0",
     "ws": "^8.18.3",
     "zod": "^3.24.1",
@@ -265,6 +266,21 @@
           "filter": [
             "**/*"
           ]
+        },
+        {
+          "from": "resources/mcp-servers/image-ocr-mcp",
+          "to": "mcp-servers/image-ocr-mcp",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "node_modules/pdf-tools-mcp",
+          "to": "mcp-servers/pdf-tools-mcp",
+          "filter": [
+            "**/*",
+            "!**/.bin/**"
+          ]
         }
       ],
       "target": [
@@ -390,6 +406,21 @@
           "to": "mcp-servers/minimatch",
           "filter": [
             "**/*"
+          ]
+        },
+        {
+          "from": "resources/mcp-servers/image-ocr-mcp",
+          "to": "mcp-servers/image-ocr-mcp",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "node_modules/pdf-tools-mcp",
+          "to": "mcp-servers/pdf-tools-mcp",
+          "filter": [
+            "**/*",
+            "!**/.bin/**"
           ]
         }
       ],

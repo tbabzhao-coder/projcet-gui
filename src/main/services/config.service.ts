@@ -4,6 +4,7 @@
 
 import { app } from 'electron'
 import { join } from 'path'
+import * as path from 'path'
 import { homedir } from 'os'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { getPythonExecutable, getBundledPythonPath } from './python-runtime.service'
@@ -495,6 +496,73 @@ function getBuiltInMcpServers(): Record<string, any> {
     console.warn('[Config] quick-chart-mcp not found, QuickChart MCP will not be available')
   }
 
+  // PDF Tools MCP - PDF manipulation with OCR capabilities using Tesseract
+  // bin/pdf-tools-mcp.js is a Node launcher that spawns Python internally
+  // It respects the PYTHON env var to use bundled Python
+  const isDev2 = !app.isPackaged || process.env.NODE_ENV === 'development'
+  let pdfToolsBinScript: string | null = null
+
+  if (isDev2) {
+    const candidate = path.join(app.getAppPath(), 'node_modules', 'pdf-tools-mcp', 'bin', 'pdf-tools-mcp.js')
+    if (existsSync(candidate)) pdfToolsBinScript = candidate
+  } else {
+    const candidate = path.join(process.resourcesPath || app.getAppPath(), 'mcp-servers', 'pdf-tools-mcp', 'bin', 'pdf-tools-mcp.js')
+    if (existsSync(candidate)) pdfToolsBinScript = candidate
+  }
+
+  if (pdfToolsBinScript) {
+    const bundledNode = getBundledNodeExecutable()
+    const nodeCommand = bundledNode || 'node'
+    const bundledPython = getBundledPythonPath()
+
+    builtIn['pdf-tools'] = {
+      command: nodeCommand,
+      args: [pdfToolsBinScript],
+      disabled: true,
+      __builtIn: true,
+      env: {
+        MCP_MODE: 'stdio',
+        ...(bundledPython ? { PYTHON: bundledPython } : {})
+      }
+    }
+    console.log('[Config] Built-in PDF Tools MCP server configured:')
+    console.log('  Command:', nodeCommand, pdfToolsBinScript)
+    console.log('  PYTHON:', bundledPython || '(system python)')
+  } else {
+    console.warn('[Config] pdf-tools-mcp not found, PDF Tools MCP will not be available')
+  }
+
+  // Image OCR MCP - Pure JavaScript OCR using Tesseract.js (no system dependencies)
+  // Supports PNG, JPG, JPEG, BMP, TIFF, WebP with 100+ languages
+  const isDev = !app.isPackaged || process.env.NODE_ENV === 'development'
+  let imageOcrIndexPath: string
+
+  if (isDev) {
+    // Development mode: use resources directory in project root
+    imageOcrIndexPath = path.join(app.getAppPath(), 'resources', 'mcp-servers', 'image-ocr-mcp', 'index.js')
+  } else {
+    // Production mode: use extraResources
+    imageOcrIndexPath = path.join(process.resourcesPath || app.getAppPath(), 'mcp-servers', 'image-ocr-mcp', 'index.js')
+  }
+
+  if (existsSync(imageOcrIndexPath)) {
+    const bundledNode = getBundledNodeExecutable()
+    const nodeCommand = bundledNode || 'node'
+
+    builtIn['image-ocr'] = {
+      command: nodeCommand,
+      args: [imageOcrIndexPath],
+      disabled: true,
+      __builtIn: true
+    }
+    console.log('[Config] Built-in Image OCR MCP server configured:')
+    console.log('  Command:', nodeCommand)
+    console.log('  Script:', imageOcrIndexPath)
+    console.log('  Note: Pure JavaScript implementation, no system dependencies required')
+  } else {
+    console.warn('[Config] image-ocr-mcp not found at:', imageOcrIndexPath)
+  }
+
   _builtInMcpCache = builtIn
   return builtIn
 }
@@ -912,13 +980,14 @@ export function getConfig(): AppConfig {
         const userMcpServers = parsed.mcpServers || DEFAULT_CONFIG.mcpServers
         for (const [name, userConfig] of Object.entries(userMcpServers)) {
           if (mcpServers[name] && (mcpServers[name] as any).__builtIn) {
-            // For built-in servers, only merge user-configurable fields
-            // Do NOT override command and args (they should always be dynamically resolved)
-            const { command, args, __builtIn, ...userConfigFields } = userConfig as any
+            // For built-in servers, merge user-configurable fields
+            // Allow user to override args (for custom parameters like --user-data-dir)
+            // But preserve command and env (they should always be dynamically resolved)
+            const { command, __builtIn, env, ...userConfigFields } = userConfig as any
             mcpServers[name] = {
               ...mcpServers[name],
               ...userConfigFields,
-              // Preserve __builtIn flag and dynamically resolved command/args
+              // Preserve __builtIn flag and dynamically resolved command/env
               __builtIn: true
             }
           } else {
