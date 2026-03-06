@@ -55,7 +55,110 @@ export const v2Sessions = new Map<string, V2SessionInfo>()
 const pendingInvalidations = new Set<string>()
 
 // ============================================
-// Session Cleanup
+// Session Cleanup Helper
+// ============================================
+
+/**
+ * Clean up a single V2 session: close and remove from map.
+ *
+ * This is the single source of truth for session cleanup logic.
+ * All cleanup paths should use this function to ensure consistency.
+ */
+function cleanupSession(conversationId: string, reason: string): void {
+  const info = v2Sessions.get(conversationId)
+  if (!info) return
+
+  console.log(`[Agent][${conversationId}] Cleaning up session: ${reason}`)
+
+  try {
+    info.session.close()  // Release FDs (stdin/stdout/stderr pipes)
+  } catch (e) {
+    // Ignore close errors - session may already be dead
+  }
+
+  v2Sessions.delete(conversationId)
+}
+
+// ============================================
+// Session Health Check
+// ============================================
+
+/**
+ * Check if a V2 session's underlying process is still alive and ready.
+ *
+ * This checks the SDK's internal transport state, which is the Single Source of Truth
+ * for process health. The transport.ready flag is set to false when:
+ * - Process exits (normal or abnormal)
+ * - Process is killed (OOM, signal, etc.)
+ * - Transport is closed
+ *
+ * Without this check, we'd try to reuse a dead session and get
+ * "ProcessTransport is not ready" errors.
+ */
+function isSessionTransportReady(session: V2SDKSession): boolean {
+  try {
+    const query = (session as any).query
+    const transport = query?.transport
+
+    if (!transport) return false
+
+    if (typeof transport.isReady === 'function') {
+      return transport.isReady()
+    }
+
+    if (typeof transport.ready === 'boolean') {
+      return transport.ready
+    }
+
+    // Can't determine state — assume ready (conservative, avoids unnecessary recreation)
+    return true
+  } catch (e) {
+    console.error(`[Agent] Error checking session transport state:`, e)
+    return false
+  }
+}
+
+// ============================================
+// Process Exit Listener
+// ============================================
+
+/**
+ * Register a listener for process exit events (event-driven cleanup).
+ *
+ * When the CC subprocess dies (OOM, crash, signal), we get notified immediately
+ * and call session.close() to release FDs. This prevents FD leaks without
+ * waiting for the next polling cycle.
+ *
+ * Each session holds 3 FDs (stdin/stdout/stderr pipes) on the parent process side.
+ * Accumulated FD leaks can cause "spawn EBADF" errors.
+ */
+function registerProcessExitListener(session: V2SDKSession, conversationId: string): void {
+  try {
+    const transport = (session as any).query?.transport
+
+    if (!transport) {
+      console.warn(`[Agent][${conversationId}] Cannot register exit listener: no transport`)
+      return
+    }
+
+    if (typeof transport.onExit === 'function') {
+      transport.onExit((error: Error | undefined) => {
+        const errorMsg = error ? `: ${error.message}` : ''
+        cleanupSession(conversationId, `process exited${errorMsg}`)
+        console.log(`[Agent][${conversationId}] Remaining sessions: ${v2Sessions.size}`)
+      })
+      console.log(`[Agent][${conversationId}] Process exit listener registered`)
+    } else {
+      console.warn(`[Agent][${conversationId}] SDK transport.onExit not available, relying on polling cleanup`)
+    }
+  } catch (e) {
+    console.error(`[Agent][${conversationId}] Failed to register exit listener:`, e)
+    // Not fatal - polling cleanup is the fallback
+  }
+}
+
+// ============================================
+// Session Cleanup (Polling Fallback)
 // ============================================
 
 // Session cleanup interval (clean up sessions not used for 30 minutes)
@@ -63,23 +166,31 @@ const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000
 let cleanupIntervalId: NodeJS.Timeout | null = null
 
 /**
- * Start the session cleanup interval
+ * Start the session cleanup interval (polling fallback).
+ *
+ * Primary cleanup is event-driven via registerProcessExitListener().
+ * This fallback handles cases where onExit doesn't fire (SDK changes, edge cases).
  */
 function startSessionCleanup(): void {
   if (cleanupIntervalId) return
 
   cleanupIntervalId = setInterval(() => {
     const now = Date.now()
-    // Avoid TS downlevelIteration requirement (main process tsconfig doesn't force target=es2015)
     for (const [convId, info] of Array.from(v2Sessions.entries())) {
+      // Check 1: Clean up sessions with dead processes (killed by OS, crashed, etc.)
+      if (!isSessionTransportReady(info.session)) {
+        cleanupSession(convId, 'process not ready (polling fallback)')
+        continue
+      }
+
+      // Check 2: Clean up idle sessions (not used for 30 minutes)
+      // Skip sessions with an in-flight request — they are not idle.
+      if (activeSessions.has(convId)) {
+        info.lastUsedAt = now // keep the clock fresh so timeout resets after task ends
+        continue
+      }
       if (now - info.lastUsedAt > SESSION_IDLE_TIMEOUT_MS) {
-        console.log(`[Agent] Cleaning up idle V2 session: ${convId}`)
-        try {
-          info.session.close()
-        } catch (e) {
-          console.error(`[Agent] Error closing session ${convId}:`, e)
-        }
-        v2Sessions.delete(convId)
+        cleanupSession(convId, 'idle timeout (30 min)')
       }
     }
   }, 60 * 1000) // Check every minute
@@ -162,14 +273,32 @@ export async function getOrCreateV2Session(
   // Check if we have an existing session for this conversation
   const existing = v2Sessions.get(conversationId)
   if (existing) {
-    // Check if config changed and requires rebuild (e.g. API key/URL changed → must rebuild so subprocess gets new env)
-    if (config && needsSessionRebuild(existing, config)) {
+    // CRITICAL: First check if the underlying process is still alive
+    // The CC subprocess may have been killed by OS (OOM, etc.) or crashed,
+    // but our v2Sessions Map still holds a reference to the dead session.
+    // We must check SDK's transport state (Single Source of Truth) before reusing.
+    if (!isSessionTransportReady(existing.session)) {
+      console.log(`[Agent][${conversationId}] Session transport not ready (process dead), recreating...`)
+      cleanupSession(conversationId, 'process not ready')
+      // Fall through to create new session
+    } else if (config && needsSessionRebuild(existing, config)) {
+      // Check if config changed and requires rebuild
       const credsChanged = (existing.config.credentialsHash ?? '') !== (config.credentialsHash ?? '')
       console.log(`[Agent][${conversationId}] Config changed (credentials=${credsChanged}, aiBrowser/skills may differ), rebuilding session...`)
-      closeV2SessionForRebuild(conversationId)
+
+      // If a request is in flight for this conversation, defer rebuild to avoid
+      // killing the active session (same strategy as invalidateAllSessions)
+      if (activeSessions.has(conversationId)) {
+        console.log(`[Agent][${conversationId}] Config changed but request in flight, deferring rebuild`)
+        pendingInvalidations.add(conversationId)
+        existing.lastUsedAt = Date.now()
+        return existing.session
+      }
+
+      cleanupSession(conversationId, 'config changed')
       // Fall through to create new session
     } else {
-      console.log(`[Agent][${conversationId}] Reusing existing V2 session (credentialsHash unchanged)`)
+      console.log(`[Agent][${conversationId}] Reusing existing V2 session`)
       existing.lastUsedAt = Date.now()
       return existing.session
     }
@@ -204,6 +333,9 @@ export async function getOrCreateV2Session(
     lastUsedAt: Date.now(),
     config: config || { aiBrowserEnabled: false }
   })
+
+  // Register process exit listener for immediate cleanup (event-driven, better than polling)
+  registerProcessExitListener(session, conversationId)
 
   // Start cleanup if not already running
   startSessionCleanup()
@@ -262,7 +394,8 @@ export async function ensureSessionWarm(
     stderrHandler: (data: string) => {
       console.error(`[Agent][${conversationId}] CLI stderr (warm):`, data)
     },
-    mcpServers: enabledMcpServers
+    mcpServers: enabledMcpServers,
+    maxTurns: config.agent?.maxTurns
   })
 
   // Session config for rebuild detection (must match sendMessage so reuse/rebuild is consistent)
@@ -290,33 +423,18 @@ export async function ensureSessionWarm(
  * Close V2 session for a conversation
  */
 export function closeV2Session(conversationId: string): void {
-  const info = v2Sessions.get(conversationId)
-  if (info) {
-    console.log(`[Agent][${conversationId}] Closing V2 session`)
-    try {
-      info.session.close()
-    } catch (e) {
-      console.error(`[Agent] Error closing session:`, e)
-    }
-    v2Sessions.delete(conversationId)
-  }
+  cleanupSession(conversationId, 'explicit close')
 }
 
 /**
  * Close all V2 sessions (for app shutdown)
  */
 export function closeAllV2Sessions(): void {
-  console.log(`[Agent] Closing all ${v2Sessions.size} V2 sessions`)
-  // Avoid TS downlevelIteration requirement
-  for (const [convId, info] of Array.from(v2Sessions.entries())) {
-    try {
-      info.session.close()
-    } catch (e) {
-      console.error(`[Agent] Error closing session ${convId}:`, e)
-    }
+  const count = v2Sessions.size
+  console.log(`[Agent] Closing all ${count} V2 sessions`)
+  for (const convId of Array.from(v2Sessions.keys())) {
+    cleanupSession(convId, 'app shutdown')
   }
-  v2Sessions.clear()
-
   stopSessionCleanup()
 }
 
@@ -336,28 +454,16 @@ export function invalidateAllSessions(): void {
 
   console.log(`[Agent] Invalidating ${count} sessions due to API config change`)
 
-  for (const [convId, info] of Array.from(v2Sessions.entries())) {
+  for (const convId of Array.from(v2Sessions.keys())) {
     // If a request is in flight, defer closing until it finishes
     if (activeSessions.has(convId)) {
       pendingInvalidations.add(convId)
       console.log(`[Agent] Deferring session close until idle: ${convId}`)
       continue
     }
-
-    try {
-      console.log(`[Agent] Closing session: ${convId}`)
-      info.session.close()
-    } catch (e) {
-      console.error(`[Agent] Error closing session ${convId}:`, e)
-    }
+    cleanupSession(convId, 'API config change')
   }
 
-  // Remove only sessions that were closed immediately
-  for (const convId of Array.from(v2Sessions.keys())) {
-    if (!activeSessions.has(convId)) {
-      v2Sessions.delete(convId)
-    }
-  }
   console.log('[Agent] All sessions invalidated, will use new config on next message')
 }
 

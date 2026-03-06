@@ -671,6 +671,10 @@ interface AppConfig {
   onboarding: {
     completed: boolean
   }
+  // Agent configuration
+  agent?: {
+    maxTurns: number  // Maximum tool call turns per message (default: 50)
+  }
   // MCP servers configuration (compatible with Cursor / Claude Desktop format)
   mcpServers: Record<string, McpServerConfig>
   // Skills configuration (compatible with Claude Code CLI format)

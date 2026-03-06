@@ -64,6 +64,8 @@ export interface BaseSdkOptionsParams {
   stderrHandler?: (data: string) => void
   /** Optional MCP servers configuration */
   mcpServers?: Record<string, any> | null
+  /** Maximum tool call turns per message (from config, default 50) */
+  maxTurns?: number
 }
 
 // ============================================
@@ -306,7 +308,8 @@ export function buildBaseSdkOptions(params: BaseSdkOptionsParams): Record<string
     conversationId,
     abortController,
     stderrHandler,
-    mcpServers
+    mcpServers,
+    maxTurns
   } = params
 
   console.log(`[SDK Config] buildBaseSdkOptions: workDir="${workDir}", spaceId="${spaceId}"`)
@@ -337,7 +340,7 @@ export function buildBaseSdkOptions(params: BaseSdkOptionsParams): Record<string
       preset: 'claude_code' as const,
       append: buildSystemPromptAppend(workDir, credentials.displayModel)
     },
-    maxTurns: 50,
+    maxTurns: maxTurns ?? 50,
     allowedTools: ['Read', 'Write', 'Edit', 'Grep', 'Glob', 'Bash', 'Skill', 'AskUserQuestion'],
     // Disable WebSearch and WebFetch tools
     disallowedTools: ['WebSearch', 'WebFetch'],

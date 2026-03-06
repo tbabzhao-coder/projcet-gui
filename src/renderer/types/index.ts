@@ -184,6 +184,10 @@ export interface AppConfig {
   appearance: AppearanceConfig;
   system: SystemConfig;
   remoteAccess: RemoteAccessConfig;
+  // Agent configuration
+  agent?: {
+    maxTurns: number;  // Maximum tool call turns per message (default: 50)
+  };
   mcpServers: McpServersConfig;  // MCP servers configuration
   skills?: SkillsConfig;  // Skills configuration (compatible with Claude Code CLI format)
   isFirstLaunch: boolean;
