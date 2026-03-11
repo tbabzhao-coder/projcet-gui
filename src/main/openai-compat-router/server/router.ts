@@ -37,6 +37,11 @@ export function createApp(options: RouterOptions = {}): Express {
     res.json({ status: 'ok', timestamp: new Date().toISOString() })
   })
 
+  // Debug log endpoint — renderer posts here so logs appear in Network panel
+  app.post('/debug/log', (req: Request, res: Response) => {
+    res.json({ ok: true })
+  })
+
   // Main messages endpoint
   app.post('/v1/messages', async (req: Request, res: Response) => {
     const anthropicRequest = (req.body || {}) as AnthropicRequest

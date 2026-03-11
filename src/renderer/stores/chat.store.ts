@@ -330,7 +330,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // Load full conversation if not in cache
     if (!conversationCache.has(conversationId)) {
       set({ isLoadingConversation: true })
-      console.log(`[ChatStore] Loading full conversation: ${conversationId}`)
 
       try {
         const response = await api.getConversation(currentSpaceId, conversationId)
@@ -349,7 +348,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
             return { conversationCache: newCache, isLoadingConversation: false }
           })
-          console.log(`[ChatStore] Loaded conversation with ${fullConversation.messages?.length || 0} messages`)
         } else {
           set({ isLoadingConversation: false })
         }
@@ -366,7 +364,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
         const sessionState = response.data as { isActive: boolean; thoughts: Thought[]; spaceId?: string }
 
         if (sessionState.isActive && sessionState.thoughts.length > 0) {
-          console.log(`[ChatStore] Recovering ${sessionState.thoughts.length} thoughts for conversation ${conversationId}`)
 
           set((state) => {
             const newSessions = new Map(state.sessions)
@@ -729,11 +726,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
         : (content ?? session.streamingContent)
 
       if (isNewTextBlock) {
-        console.log(`[ChatStore] 🆕 New text block signal [${conversationId}]: version ${newTextBlockVersion}`)
-      } else if (delta) {
-        console.log(`[ChatStore] handleAgentMessage [${conversationId}]: +${delta.length} chars (total: ${newContent.length})`)
-      } else {
-        console.log(`[ChatStore] handleAgentMessage [${conversationId}]:`, content?.substring(0, 100), `streaming: ${isStreaming}`)
       }
 
       newSessions.set(conversationId, {
@@ -749,7 +741,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // Handle tool call for a specific conversation
   handleAgentToolCall: (data) => {
     const { conversationId, ...toolCall } = data
-    console.log(`[ChatStore] handleAgentToolCall [${conversationId}]:`, toolCall.name)
+    // tool call logged in App.tsx
 
     if (toolCall.requiresApproval) {
       set((state) => {
@@ -767,14 +759,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // Handle tool result for a specific conversation
   handleAgentToolResult: (data) => {
     const { conversationId, toolId } = data
-    console.log(`[ChatStore] handleAgentToolResult [${conversationId}]:`, toolId)
+    // tool result tracked in thoughts
     // Tool results are tracked in thoughts, no additional state needed
   },
 
   // Handle error for a specific conversation
   handleAgentError: (data) => {
     const { conversationId, error } = data
-    console.log(`[ChatStore] handleAgentError [${conversationId}]:`, error)
+    console.error(`[ChatStore] error [${conversationId}]:`, error)
 
     // Add error thought to session
     const errorThought: Thought = {
@@ -803,7 +795,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // Key: Only set isGenerating=false AFTER backend data is loaded to prevent flash
   handleAgentComplete: async (data) => {
     const { spaceId, conversationId } = data
-    console.log(`[ChatStore] handleAgentComplete [${conversationId}]`)
+    // complete handled in App.tsx with token stats
 
     // First, just stop streaming indicator but keep isGenerating=true
     // This keeps the streaming bubble visible during backend load
@@ -878,7 +870,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
             conversationCache: newCache
           }
         })
-        console.log(`[ChatStore] Conversation reloaded from backend [${conversationId}]`)
       }
     } catch (error) {
       console.error('[ChatStore] Failed to reload conversation:', error)
@@ -902,7 +893,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // Handle thought for a specific conversation
   handleAgentThought: (data) => {
     const { conversationId, thought } = data
-    console.log(`[ChatStore] handleAgentThought [${conversationId}]:`, thought.type, thought.id)
 
     set((state) => {
       const newSessions = new Map(state.sessions)
@@ -911,7 +901,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // Check if thought with same id already exists (avoid duplicates after recovery)
       const existingIds = new Set(session.thoughts.map(t => t.id))
       if (existingIds.has(thought.id)) {
-        console.log(`[ChatStore] Skipping duplicate thought: ${thought.id}`)
         return state // No change
       }
 
@@ -929,9 +918,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
   handleAgentThoughtDelta: (data) => {
     const { conversationId, thoughtId, delta, content, toolInput, isComplete, isReady, isToolInput, toolResult, isToolResult } = data
     // Don't log every delta to reduce console noise (only log on complete or toolResult)
-    if (isComplete || isToolResult) {
-      console.log(`[ChatStore] handleAgentThoughtDelta [${conversationId}]: thought ${thoughtId} ${isToolResult ? 'toolResult merged' : 'complete'}`)
-    }
 
     set((state) => {
       const newSessions = new Map(state.sessions)
@@ -987,7 +973,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // Handle compact notification - context was compressed
   handleAgentCompact: (data) => {
     const { conversationId, trigger, preTokens } = data
-    console.log(`[ChatStore] handleAgentCompact [${conversationId}]: trigger=${trigger}, preTokens=${preTokens}`)
 
     set((state) => {
       const newSessions = new Map(state.sessions)

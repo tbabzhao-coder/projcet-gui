@@ -6,6 +6,7 @@
  */
 
 import path from 'path'
+import fs from 'fs'
 import { getConfig } from '../config.service'
 import { isAIBrowserTool } from '../ai-browser'
 import { activeSessions } from './session-manager'
@@ -29,6 +30,22 @@ export type CanUseToolFn = (
 ) => Promise<ToolPermissionResult>
 
 // ============================================
+// Dangerous Bash command patterns
+// ============================================
+
+const DANGEROUS_BASH_PATTERNS = [
+  /\brm\b/,
+  /\brmdir\b/,
+  /\bmv\b/,
+  /\bchmod\b/,
+  /\bchown\b/
+]
+
+function isDangerousBashCommand(command: string): boolean {
+  return DANGEROUS_BASH_PATTERNS.some((pattern) => pattern.test(command))
+}
+
+// ============================================
 // Permission Handler Factory
 // ============================================
 
@@ -49,15 +66,29 @@ export function createCanUseTool(
   const config = getConfig()
   const absoluteWorkDir = path.resolve(workDir)
 
-  console.log(`[Agent] Creating canUseTool with workDir: ${absoluteWorkDir}`)
+  // Helper: send approval request and wait for user response
+  function askApproval(toolCall: ToolCall): Promise<ToolPermissionResult> {
+    sendToRenderer('agent:tool-call', spaceId, conversationId, toolCall as unknown as Record<string, unknown>)
+    const session = activeSessions.get(conversationId)
+    if (!session) {
+      return Promise.resolve({ behavior: 'deny' as const, message: 'Session not found' })
+    }
+    return new Promise((resolve) => {
+      session.pendingPermissionResolve = (approved: boolean) => {
+        resolve(
+          approved
+            ? { behavior: 'allow' as const }
+            : { behavior: 'deny' as const, message: 'User rejected the operation' }
+        )
+      }
+    })
+  }
 
   return async (
     toolName: string,
     input: Record<string, unknown>,
     _options: { signal: AbortSignal }
   ): Promise<ToolPermissionResult> => {
-    console.log(`[Agent] canUseTool called - Tool: ${toolName}, Input:`, JSON.stringify(input).substring(0, 200))
-
     // Check file path tools - restrict to working directory
     const fileTools = ['Read', 'Write', 'Edit', 'Grep', 'Glob']
     if (fileTools.includes(toolName)) {
@@ -69,11 +100,22 @@ export function createCanUseTool(
           absolutePath.startsWith(absoluteWorkDir + path.sep) || absolutePath === absoluteWorkDir
 
         if (!isWithinWorkDir) {
-          console.log(`[Agent] Security: Blocked access to: ${pathParam}`)
           return {
             behavior: 'deny' as const,
             message: `Can only access files within the current space: ${workDir}`
           }
+        }
+
+        // Write/Edit: ask approval when overwriting an existing file
+        if ((toolName === 'Write' || toolName === 'Edit') && fs.existsSync(absolutePath)) {
+          return askApproval({
+            id: `tool-${Date.now()}`,
+            name: toolName,
+            status: 'waiting_approval',
+            input,
+            requiresApproval: true,
+            description: `Overwrite existing file: ${pathParam}`
+          })
         }
       }
     }
@@ -81,44 +123,32 @@ export function createCanUseTool(
     // Check Bash commands based on permission settings
     if (toolName === 'Bash') {
       const permission = config.permissions.commandExecution
+      const command = (input.command as string) || ''
 
       if (permission === 'deny') {
-        return {
-          behavior: 'deny' as const,
-          message: 'Command execution is disabled'
-        }
+        return { behavior: 'deny' as const, message: 'Command execution is disabled' }
       }
 
-      if (permission === 'ask' && !config.permissions.trustMode) {
-        // Send permission request to renderer with session IDs
-        const toolCall: ToolCall = {
+      // Always ask for dangerous commands regardless of permission mode (unless trustMode)
+      if (!config.permissions.trustMode && isDangerousBashCommand(command)) {
+        return askApproval({
           id: `tool-${Date.now()}`,
           name: toolName,
           status: 'waiting_approval',
           input,
           requiresApproval: true,
-          description: `Execute command: ${input.command}`
-        }
+          description: `Dangerous command: ${command}`
+        })
+      }
 
-        sendToRenderer('agent:tool-call', spaceId, conversationId, toolCall as unknown as Record<string, unknown>)
-
-        // Wait for user response using session-specific resolver
-        const session = activeSessions.get(conversationId)
-        if (!session) {
-          return { behavior: 'deny' as const, message: 'Session not found' }
-        }
-
-        return new Promise((resolve) => {
-          session.pendingPermissionResolve = (approved: boolean) => {
-            if (approved) {
-              resolve({ behavior: 'allow' as const })
-            } else {
-              resolve({
-                behavior: 'deny' as const,
-                message: 'User rejected command execution'
-              })
-            }
-          }
+      if (permission === 'ask' && !config.permissions.trustMode) {
+        return askApproval({
+          id: `tool-${Date.now()}`,
+          name: toolName,
+          status: 'waiting_approval',
+          input,
+          requiresApproval: true,
+          description: `Execute command: ${command}`
         })
       }
     }

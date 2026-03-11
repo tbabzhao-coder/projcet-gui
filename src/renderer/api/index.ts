@@ -143,6 +143,13 @@ export const api = {
     return httpRequest('GET', '/api/config/mcp')
   },
 
+  getRouterUrl: async (): Promise<string | null> => {
+    if (isElectron()) {
+      return window.project4.getRouterUrl()
+    }
+    return null
+  },
+
   // ===== Space =====
   getTempSpace: async (): Promise<ApiResponse> => {
     if (isElectron()) {
@@ -735,6 +742,8 @@ export const api = {
     onEvent('agent:mcp-status', callback),
   onAgentCompact: (callback: (data: unknown) => void) =>
     onEvent('agent:compact', callback),
+  onDebugApiLog: (callback: (data: unknown) => void) =>
+    onEvent('debug:api-log', callback),
   onRemoteStatusChange: (callback: (data: unknown) => void) =>
     onEvent('remote:status-change', callback),
 

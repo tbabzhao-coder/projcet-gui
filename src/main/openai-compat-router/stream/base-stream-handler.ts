@@ -62,12 +62,16 @@ export function createInitialState(model: string): StreamState {
 export interface StreamHandlerOptions {
   model?: string
   debug?: boolean
+  onComplete?: (text: string, usage: { inputTokens: number; outputTokens: number }) => void
 }
 
 export abstract class BaseStreamHandler {
   protected writer: SSEWriter
   protected state: StreamState
   protected debug: boolean
+  private onComplete?: (text: string, usage: { inputTokens: number; outputTokens: number }) => void
+  private accumulatedText = ''
+  private static readonly MAX_ACCUMULATED_TEXT = 1000
 
   // Tool call tracking
   protected toolCallMap = new Map<number, StreamToolCallState>()
@@ -77,6 +81,7 @@ export abstract class BaseStreamHandler {
     this.writer = new SSEWriter(res, { debug: options.debug })
     this.state = createInitialState(options.model || 'unknown')
     this.debug = options.debug ?? false
+    this.onComplete = options.onComplete
   }
 
   /**
@@ -151,6 +156,15 @@ export abstract class BaseStreamHandler {
     this.writer.end()
 
     this.state.finished = true
+
+    // Notify caller with accumulated text and usage, then release memory
+    if (this.onComplete && this.accumulatedText) {
+      this.onComplete(this.accumulatedText, {
+        inputTokens: this.state.usage.inputTokens,
+        outputTokens: this.state.usage.outputTokens
+      })
+      this.accumulatedText = ''
+    }
   }
 
   // ============================================================================
@@ -248,6 +262,10 @@ export abstract class BaseStreamHandler {
       this.startTextBlock()
     }
 
+    this.accumulatedText += text
+    if (this.accumulatedText.length > BaseStreamHandler.MAX_ACCUMULATED_TEXT) {
+      this.accumulatedText = this.accumulatedText.slice(-BaseStreamHandler.MAX_ACCUMULATED_TEXT)
+    }
     this.writer.writeTextDelta(this.state.currentBlockIndex, text)
   }
 

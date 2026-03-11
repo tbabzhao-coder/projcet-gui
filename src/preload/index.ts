@@ -22,6 +22,7 @@ export interface Project4API {
   refreshAISourcesConfig: () => Promise<IpcResponse>
   listSkills: () => Promise<IpcResponse<Array<{ key: string; description: string }>>>
   listMcp: () => Promise<IpcResponse<Array<{ key: string; description: string }>>>
+  getRouterUrl: () => Promise<string | null>
 
   // Space
   getTempSpace: () => Promise<IpcResponse>
@@ -118,6 +119,7 @@ export interface Project4API {
   onAgentThoughtDelta: (callback: (data: unknown) => void) => () => void
   onAgentMcpStatus: (callback: (data: unknown) => void) => () => void
   onAgentCompact: (callback: (data: unknown) => void) => () => void
+  onDebugApiLog: (callback: (data: unknown) => void) => () => void
 
   // Artifact
   listArtifacts: (spaceId: string) => Promise<IpcResponse>
@@ -293,17 +295,13 @@ interface IpcResponse<T = unknown> {
 
 // Create event listener with cleanup
 function createEventListener(channel: string, callback: (data: unknown) => void): () => void {
-  console.log(`[Preload] Creating event listener for channel: ${channel}`)
-
   const handler = (_event: Electron.IpcRendererEvent, data: unknown): void => {
-    console.log(`[Preload] Received event on channel: ${channel}`, data)
     callback(data)
   }
 
   ipcRenderer.on(channel, handler)
 
   return () => {
-    console.log(`[Preload] Removing event listener for channel: ${channel}`)
     ipcRenderer.removeListener(channel, handler)
   }
 }
@@ -327,6 +325,7 @@ const api: Project4API = {
   refreshAISourcesConfig: () => ipcRenderer.invoke('config:refresh-ai-sources'),
   listSkills: () => ipcRenderer.invoke('config:list-skills'),
   listMcp: () => ipcRenderer.invoke('config:list-mcp'),
+  getRouterUrl: () => ipcRenderer.invoke('config:get-router-url'),
 
   // Space
   getTempSpace: () => ipcRenderer.invoke('space:get-project4'),
@@ -381,6 +380,7 @@ const api: Project4API = {
   onAgentThoughtDelta: (callback) => createEventListener('agent:thought-delta', callback),
   onAgentMcpStatus: (callback) => createEventListener('agent:mcp-status', callback),
   onAgentCompact: (callback) => createEventListener('agent:compact', callback),
+  onDebugApiLog: (callback) => createEventListener('debug:api-log', callback),
 
   // Artifact
   listArtifacts: (spaceId) => ipcRenderer.invoke('artifact:list', spaceId),

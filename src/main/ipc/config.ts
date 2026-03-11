@@ -6,6 +6,7 @@ import { ipcMain } from 'electron'
 import { getConfig, saveConfig, validateApiConnection } from '../services/config.service'
 import { getAISourceManager } from '../services/ai-sources'
 import { decryptString } from '../services/secure-storage.service'
+import { getRouterInfo } from '../openai-compat-router'
 
 export function registerConfigHandlers(): void {
   // Get configuration
@@ -142,5 +143,11 @@ export function registerConfigHandlers(): void {
       const err = error as Error
       return { success: false, error: err.message, data: [] }
     }
+  })
+
+  // Get local router base URL (for renderer to post debug logs to Network panel)
+  ipcMain.handle('config:get-router-url', () => {
+    const info = getRouterInfo()
+    return info ? info.baseUrl : null
   })
 }

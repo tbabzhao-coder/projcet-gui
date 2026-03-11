@@ -102,14 +102,18 @@ export async function sendMessage(
 
   // Get API credentials based on current aiSources configuration
   const credentials = await getApiCredentials(config)
-  console.log(`[Agent] ========================================`)
-  // Log API configuration (simplified)
-  console.log(`[Agent] 🔑 Sending message with:`)
-  console.log(`[Agent]    Provider: ${credentials.provider}`)
-  console.log(`[Agent]    Model: ${credentials.model}`)
-  console.log(`[Agent]    Key: ${credentials.apiKey.substring(0, 15)}...${credentials.apiKey.substring(credentials.apiKey.length - 6)}`)
-  console.log(`[Agent]    URL: ${credentials.baseUrl}`)
-  console.log(`[Agent] ========================================`)
+  console.log(`[Agent] provider=${credentials.provider} model=${credentials.model} key=${credentials.apiKey.substring(0, 8)}...`)
+
+  // Push session start info to renderer DevTools
+  sendToRenderer('debug:api-log', spaceId, conversationId, {
+    type: 'session-start',
+    provider: credentials.provider,
+    model: credentials.model,
+    baseUrl: credentials.baseUrl,
+    aiBrowserEnabled: !!aiBrowserEnabled,
+    thinkingEnabled: !!thinkingEnabled,
+    maxTurns: config.agent?.maxTurns ?? 50
+  })
 
   // Resolve credentials for SDK (handles OpenAI compat router for non-Anthropic providers)
   const resolvedCredentials = await resolveCredentialsForSdk(credentials)

@@ -335,8 +335,9 @@ export async function streamOpenAIResponsesToAnthropic(
   stream: unknown,
   res: ExpressResponse,
   model?: string,
-  debug = false
+  debug = false,
+  onComplete?: (text: string, usage: { inputTokens: number; outputTokens: number }) => void
 ): Promise<void> {
-  const handler = new OpenAIResponsesStreamHandler(res, { model, debug })
+  const handler = new OpenAIResponsesStreamHandler(res, { model, debug, onComplete })
   await handler.processStream(stream)
 }
