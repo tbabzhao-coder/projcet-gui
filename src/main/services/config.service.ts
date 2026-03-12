@@ -897,15 +897,12 @@ function getAiSourcesSignature(aiSources?: AISourcesConfig): string {
 export async function initializeApp(): Promise<void> {
   const project4Dir = getProject4Dir()
   const tempDir = getTempSpacePath()
-  const feishuDir = getFeishuSpacePath()
   const spacesDir = getSpacesDir()
   const tempArtifactsDir = join(tempDir, 'artifacts')
   const tempConversationsDir = join(tempDir, 'conversations')
-  const feishuArtifactsDir = join(feishuDir, 'artifacts')
-  const feishuConversationsDir = join(feishuDir, 'conversations')
 
-  // Create directories if they don't exist
-  const dirs = [project4Dir, tempDir, spacesDir, tempArtifactsDir, tempConversationsDir, feishuDir, feishuArtifactsDir, feishuConversationsDir]
+  // Create directories if they don't exist (feishu dirs created on-demand when configured)
+  const dirs = [project4Dir, tempDir, spacesDir, tempArtifactsDir, tempConversationsDir]
   for (const dir of dirs) {
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true })

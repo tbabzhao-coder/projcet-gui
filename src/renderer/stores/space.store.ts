@@ -54,12 +54,12 @@ export const useSpaceStore = create<SpaceState>((set, get) => ({
     }
   },
 
-  // Load Feishu space
+  // Load Feishu space (only available when configured)
   loadFeishuSpace: async () => {
     try {
       const response = await api.getFeishuSpace()
-      if (response.success && response.data) {
-        set({ feishuSpace: response.data as Space })
+      if (response.success) {
+        set({ feishuSpace: (response.data as Space) || null })
       }
     } catch (error) {
       console.error('Failed to load Feishu space:', error)

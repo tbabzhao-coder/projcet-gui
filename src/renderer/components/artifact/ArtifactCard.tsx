@@ -31,6 +31,7 @@ function formatSize(bytes?: number): string {
 export function ArtifactCard({ artifact }: ArtifactCardProps) {
   const { t } = useTranslation()
   const [isHovered, setIsHovered] = useState(false)
+  const [isDragOver, setIsDragOver] = useState(false)
   const openFile = useCanvasStore(state => state.openFile)
   const isFolder = artifact.type === 'folder'
 
@@ -90,11 +91,14 @@ export function ArtifactCard({ artifact }: ArtifactCardProps) {
 
   return (
     <div
+      data-folder-path={isFolder ? artifact.path : undefined}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      onDragOver={isFolder ? (e) => { e.stopPropagation(); setIsDragOver(true) } : undefined}
+      onDragLeave={isFolder ? () => setIsDragOver(false) : undefined}
       className={`
         w-full artifact-card p-2.5 rounded-lg text-left
         transition-all duration-200 group cursor-pointer
@@ -102,6 +106,7 @@ export function ArtifactCard({ artifact }: ArtifactCardProps) {
           ? 'bg-secondary shadow-sm'
           : 'bg-secondary/50 hover:bg-secondary/80'
         }
+        ${isDragOver ? 'ring-2 ring-primary/60 bg-primary/10' : ''}
       `}
       title={canViewInCanvas
         ? t('Click to preview · double-click to open with system')

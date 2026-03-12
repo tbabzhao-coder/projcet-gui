@@ -10,7 +10,7 @@
 import { shell } from 'electron'
 import { join, basename } from 'path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync, rmSync } from 'fs'
-import { getProject4Dir, getTempSpacePath, getFeishuSpacePath, getSpacesDir } from './config.service'
+import { getProject4Dir, getTempSpacePath, getFeishuSpacePath, getSpacesDir, getConfig } from './config.service'
 import { v4 as uuidv4 } from 'uuid'
 
 // Re-export config helper for backward compatibility with existing imports
@@ -292,9 +292,30 @@ export function getTempSpace(): Space {
   }
 }
 
-// Get Feishu space
-export function getFeishuSpace(): Space {
+// Get Feishu space (only if configured)
+export function getFeishuSpace(): Space | null {
+  // Check if feishu is configured and enabled
+  const config = getConfig()
+
+  if (!config.feishu?.enabled || !config.feishu?.appId || !config.feishu?.appSecret) {
+    return null
+  }
+
   const feishuPath = getFeishuSpacePath()
+
+  // Create feishu directories on-demand if they don't exist
+  if (!existsSync(feishuPath)) {
+    mkdirSync(feishuPath, { recursive: true })
+  }
+  const artifactsDir = join(feishuPath, 'artifacts')
+  const conversationsDir = join(feishuPath, 'conversations')
+  if (!existsSync(artifactsDir)) {
+    mkdirSync(artifactsDir, { recursive: true })
+  }
+  if (!existsSync(conversationsDir)) {
+    mkdirSync(conversationsDir, { recursive: true })
+  }
+
   const stats = getSpaceStats(feishuPath)
 
   // Load preferences if they exist

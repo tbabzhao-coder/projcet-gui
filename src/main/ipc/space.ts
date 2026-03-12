@@ -41,7 +41,7 @@ export function registerSpaceHandlers(): void {
     }
   })
 
-  // Get Feishu space
+  // Get Feishu space (returns null if not configured)
   ipcMain.handle('space:get-feishu', async () => {
     try {
       const space = getFeishuSpace()

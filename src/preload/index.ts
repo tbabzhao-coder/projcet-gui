@@ -2,7 +2,7 @@
  * Preload Script - Exposes IPC to renderer
  */
 
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 // Type definitions for exposed API
 export interface Project4API {
@@ -144,6 +144,11 @@ export interface Project4API {
     language?: string
     mimeType: string
   }>>
+  countFiles: (files: string[]) => Promise<IpcResponse<{ total: number }>>
+  copyFilesToSpace: (files: string[], targetDir: string, jobId: string) => Promise<IpcResponse>
+  onCopyProgress: (cb: (data: { jobId: string; copied: number; total: number; currentFile: string }) => void) => () => void
+  onCopyDone: (cb: (data: { jobId: string; type: 'done' | 'error'; message?: string }) => void) => () => void
+  getPathForFile: (file: File) => string
 
   // Onboarding
   writeOnboardingArtifact: (spaceId: string, filename: string, content: string) => Promise<IpcResponse>
@@ -393,6 +398,11 @@ const api: Project4API = {
   readArtifactContent: (filePath) => ipcRenderer.invoke('artifact:read-content', filePath),
   saveArtifactContent: (filePath, content) => ipcRenderer.invoke('artifact:save-content', filePath, content),
   detectFileType: (filePath) => ipcRenderer.invoke('artifact:detect-file-type', filePath),
+  countFiles: (files) => ipcRenderer.invoke('artifact:count-files', files),
+  copyFilesToSpace: (files, targetDir, jobId) => ipcRenderer.invoke('artifact:copy-files', { files, targetDir, jobId }),
+  onCopyProgress: (cb) => createEventListener('artifact:copy-progress', cb as (data: unknown) => void),
+  onCopyDone: (cb) => createEventListener('artifact:copy-done', cb as (data: unknown) => void),
+  getPathForFile: (file) => webUtils.getPathForFile(file),
 
   // Onboarding
   writeOnboardingArtifact: (spaceId, filename, content) =>

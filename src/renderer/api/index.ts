@@ -582,6 +582,51 @@ export const api = {
     return httpRequest('GET', `/api/artifacts/detect-type?path=${encodeURIComponent(filePath)}`)
   },
 
+  // Count files before copying (Electron only)
+  countFiles: async (files: string[]): Promise<ApiResponse<{ total: number }>> => {
+    if (isElectron()) {
+      return window.project4.countFiles(files)
+    }
+    return { success: false, error: 'Not supported in remote mode' }
+  },
+
+  // Copy files to space via worker thread (Electron only)
+  copyFilesToSpace: async (files: string[], targetDir: string, jobId: string): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.project4.copyFilesToSpace(files, targetDir, jobId)
+    }
+    return { success: false, error: 'Not supported in remote mode' }
+  },
+
+  // Get real file path from File object (Electron only, uses webUtils.getPathForFile)
+  getPathForFile: (file: File): string | null => {
+    if (isElectron()) {
+      try {
+        return window.project4.getPathForFile(file)
+      } catch (err) {
+        console.error('[API] getPathForFile error:', err)
+        return null
+      }
+    }
+    return null
+  },
+
+  // Subscribe to copy progress events
+  onCopyProgress: (cb: (data: { jobId: string; copied: number; total: number; currentFile: string }) => void) => {
+    if (isElectron()) {
+      return window.project4.onCopyProgress(cb)
+    }
+    return () => {}
+  },
+
+  // Subscribe to copy done events
+  onCopyDone: (cb: (data: { jobId: string; type: 'done' | 'error'; message?: string }) => void) => {
+    if (isElectron()) {
+      return window.project4.onCopyDone(cb)
+    }
+    return () => {}
+  },
+
   // ===== Onboarding =====
   writeOnboardingArtifact: async (
     spaceId: string,

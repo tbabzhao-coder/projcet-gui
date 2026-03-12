@@ -335,6 +335,15 @@ export function listArtifactsTree(spaceId: string): ArtifactTreeNode[] {
   return tree
 }
 
+// Load children for a specific directory (lazy loading for tree view)
+export function loadArtifactChildren(spaceId: string, dirPath: string): ArtifactTreeNode[] {
+  if (!existsSync(dirPath)) {
+    throw new Error(`Directory not found: ${dirPath}`)
+  }
+  // Scan one level deep, children will be lazy-loaded on expand
+  return scanDirectoryTree(dirPath, 1, 0)
+}
+
 // ============================================
 // Content Canvas Support
 // ============================================
