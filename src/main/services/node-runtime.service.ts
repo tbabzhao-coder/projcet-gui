@@ -222,3 +222,35 @@ export function buildPathWithBundledNode(existingPath: string = ''): string {
     ? `${unixStylePath}${separator}${existingPath}`
     : unixStylePath
 }
+
+/**
+ * Get the path to bundled Playwright browsers directory
+ * Returns undefined if not bundled (dev mode uses default cache)
+ */
+export function getBundledPlaywrightBrowsersPath(): string | undefined {
+  const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
+
+  if (isDev) {
+    // Dev mode: check if resources/playwright-browsers exists (from prepare script)
+    const projectRoot = join(__dirname, '../..')
+    const devPath = join(projectRoot, 'resources', 'playwright-browsers')
+    if (existsSync(devPath)) {
+      return devPath
+    }
+    // Otherwise use default cache (~/.cache/ms-playwright or ~/Library/Caches/ms-playwright)
+    return undefined
+  }
+
+  // Production: use extraResources path
+  try {
+    const resourcesPath = process.resourcesPath || (app as any).getPath('resources')
+    const browsersPath = join(resourcesPath, 'playwright-browsers')
+    if (existsSync(browsersPath)) {
+      return browsersPath
+    }
+  } catch (error) {
+    console.warn('[NodeRuntime] Error getting playwright browsers path:', error)
+  }
+
+  return undefined
+}

@@ -176,6 +176,44 @@ function getBuiltInSkills(): SkillsConfig {
 
     // Add more built-in skills here in the future
 
+    // apa-builder skill - AI-Powered Automation skill builder
+    const apaBuilderPath = join(skillsDir, 'apa-builder')
+    if (existsSync(apaBuilderPath)) {
+      const skillMdPath = join(apaBuilderPath, 'SKILL.md')
+      if (existsSync(skillMdPath)) {
+        builtIn['apa-builder'] = {
+          name: 'apa-builder',
+          path: apaBuilderPath,
+          type: 'directory',
+          description: '创建 AI 驱动的浏览器自动化 skill。当用户想录制、创建或调试浏览器自动化操作时使用。支持录制操作流程、智能分析接口调用、生成可复用 skill、对话式调试、自动降级和自我修复。关键词：录制、自动化、浏览器操作、重复性任务、爬虫、数据采集',
+          disabled: false,
+          hasScripts: true,
+          __builtIn: true
+        }
+        console.log('[Config] Built-in apa-builder skill configured:')
+        console.log('  Path:', apaBuilderPath)
+      }
+    }
+
+    // skill-vetter - Security-first skill vetting
+    const skillVetterPath = join(skillsDir, 'skill-vetter-1.0.0')
+    if (existsSync(skillVetterPath)) {
+      const skillMdPath = join(skillVetterPath, 'SKILL.md')
+      if (existsSync(skillMdPath)) {
+        builtIn['skill-vetter'] = {
+          name: 'skill-vetter',
+          path: skillVetterPath,
+          type: 'directory',
+          description: 'Security-first skill vetting for AI agents. Use before installing any skill from ClawdHub, GitHub, or other sources. Checks for red flags, permission scope, and suspicious patterns.',
+          disabled: false,
+          hasScripts: false,
+          __builtIn: true
+        }
+        console.log('[Config] Built-in skill-vetter skill configured:')
+        console.log('  Path:', skillVetterPath)
+      }
+    }
+
   } catch (error) {
     console.warn('[Config] Failed to configure built-in skills:', error)
   }

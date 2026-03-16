@@ -490,8 +490,10 @@ export function syncSkillsToConfigDir(skills: Record<string, any>): void {
     const targetPath = join(configSkillsDir, name)
 
     try {
-      // For built-in skills, skip if already synced (they don't change unless app is updated)
-      if (config.__builtIn && existsSync(targetPath)) {
+      // For built-in skills in production, skip if already synced (they don't change unless app is updated)
+      // In development, always re-sync so SKILL.md edits take effect immediately
+      const isDev = !process.env.NODE_ENV || process.env.NODE_ENV === 'development'
+      if (config.__builtIn && existsSync(targetPath) && !isDev) {
         console.log(`[Agent] ✓ Built-in skill "${name}" already exists, skipping`)
         continue
       }

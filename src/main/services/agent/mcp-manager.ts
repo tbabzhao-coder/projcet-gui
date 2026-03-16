@@ -18,7 +18,7 @@ import {
   broadcastToAllClients,
   setMainWindow
 } from './helpers'
-import { buildEnvWithBundledNode } from '../node-runtime.service'
+import { buildEnvWithBundledNode, getBundledPlaywrightBrowsersPath } from '../node-runtime.service'
 
 // ============================================
 // MCP Status Cache
@@ -178,7 +178,10 @@ export async function testMcpConnections(
           // Disable unnecessary API requests
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
           DISABLE_TELEMETRY: '1',
-          DISABLE_COST_WARNINGS: '1'
+          DISABLE_COST_WARNINGS: '1',
+          ...(getBundledPlaywrightBrowsersPath()
+            ? { PLAYWRIGHT_BROWSERS_PATH: getBundledPlaywrightBrowsersPath() }
+            : {})
         },
         permissionMode: 'bypassPermissions',
         abortController,

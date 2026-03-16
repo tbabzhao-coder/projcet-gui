@@ -31,7 +31,9 @@ import { cleanupAllCaches } from '../services/artifact-cache.service'
 import { markExtendedServicesReady } from './state'
 import { getMainWindow, sendToRenderer } from '../services/window.service'
 import { registerFeishuHandlers } from '../ipc/feishu'
+import { registerApaHandlers } from '../ipc/apa'
 import { initializeFeishuService, stopFeishuService } from '../services/feishu.service'
+import { cleanupOldRecordingTmpDirs } from '../services/apa-recorder.service'
 
 /**
  * Initialize extended services after window is visible
@@ -79,6 +81,12 @@ export function initializeExtendedServices(): void {
 
   // Updater: Auto-update functionality
   registerUpdaterHandlers()
+
+  // APA: Browser automation recording and execution
+  registerApaHandlers()
+
+  // APA: Cleanup old recording tmp dirs from previous sessions
+  cleanupOldRecordingTmpDirs()
 
   // Feishu: Register IPC handlers and initialize service
   registerFeishuHandlers()

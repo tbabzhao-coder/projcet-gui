@@ -10,7 +10,7 @@ import { join } from 'path'
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'fs'
 import { getClaudeConfigDir } from '../config.service'
 import { ensureOpenAICompatRouter, encodeBackendConfig } from '../../openai-compat-router'
-import { buildEnvWithBundledNode } from '../node-runtime.service'
+import { buildEnvWithBundledNode, getBundledPlaywrightBrowsersPath } from '../node-runtime.service'
 import { buildEnvWithBundledPython } from '../python-runtime.service'
 import type { ApiCredentials } from './types'
 import { inferOpenAIWireApi } from './helpers'
@@ -280,7 +280,12 @@ export function buildSdkEnv(params: SdkEnvParams): Record<string, string | numbe
     // Disable non-essential traffic
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
     DISABLE_TELEMETRY: '1',
-    DISABLE_COST_WARNINGS: '1'
+    DISABLE_COST_WARNINGS: '1',
+
+    // Playwright: use bundled browsers if available
+    ...(getBundledPlaywrightBrowsersPath()
+      ? { PLAYWRIGHT_BROWSERS_PATH: getBundledPlaywrightBrowsersPath() }
+      : {})
   }
 
   return env as Record<string, string | number>

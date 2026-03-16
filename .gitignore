@@ -52,5 +52,8 @@ resources/python-*
 # Git Bash for Windows (bundled, don't commit)
 resources/git-bash-win-x64
 
+# Playwright browsers (bundled, don't commit)
+resources/playwright-browsers
+
 # Test files
 test-*.mjs

@@ -1214,6 +1214,99 @@ export const api = {
     }
     return window.project4.onFeishuStatusChange(callback)
   },
+
+  // ============================================
+  // APA (AI-Powered Automation)
+  // ============================================
+
+  apaStartRecording: async (options: { url?: string }): Promise<ApiResponse> => {
+    if (!isElectron()) {
+      return { success: false, error: 'APA is only available in desktop mode' }
+    }
+    return window.project4.apaStartRecording(options)
+  },
+
+  apaStopRecording: async (): Promise<ApiResponse> => {
+    if (!isElectron()) {
+      return { success: false, error: 'APA is only available in desktop mode' }
+    }
+    return window.project4.apaStopRecording()
+  },
+
+  apaExecuteSkill: async (options: { skillName: string; params: Record<string, string> }): Promise<ApiResponse> => {
+    if (!isElectron()) {
+      return { success: false, error: 'APA is only available in desktop mode' }
+    }
+    return window.project4.apaExecuteSkill(options)
+  },
+
+  apaStopExecution: async (): Promise<ApiResponse> => {
+    if (!isElectron()) {
+      return { success: false, error: 'APA is only available in desktop mode' }
+    }
+    return window.project4.apaStopExecution()
+  },
+
+  apaUpdateScript: async (skillName: string, newScript: string): Promise<ApiResponse> => {
+    if (!isElectron()) {
+      return { success: false, error: 'APA is only available in desktop mode' }
+    }
+    return window.project4.apaUpdateScript(skillName, newScript)
+  },
+
+  configAddSkill: async (skillConfig: {
+    name: string
+    path: string
+    type: 'directory' | 'file'
+    description?: string
+    disabled?: boolean
+    hasScripts?: boolean
+  }): Promise<ApiResponse> => {
+    if (!isElectron()) {
+      return { success: false, error: 'Only available in desktop mode' }
+    }
+    return window.project4.configAddSkill(skillConfig)
+  },
+
+  onApaRecordingStarted: (callback: (data: unknown) => void) => {
+    if (!isElectron()) return () => {}
+    return window.project4.onApaRecordingStarted(callback)
+  },
+
+  onApaRecordingLog: (callback: (data: unknown) => void) => {
+    if (!isElectron()) return () => {}
+    return window.project4.onApaRecordingLog(callback)
+  },
+
+  onApaRecordingStopped: (callback: (data: unknown) => void) => {
+    if (!isElectron()) return () => {}
+    return window.project4.onApaRecordingStopped(callback)
+  },
+
+  onApaExecutionStarted: (callback: (data: unknown) => void) => {
+    if (!isElectron()) return () => {}
+    return window.project4.onApaExecutionStarted(callback)
+  },
+
+  onApaExecutionLog: (callback: (data: unknown) => void) => {
+    if (!isElectron()) return () => {}
+    return window.project4.onApaExecutionLog(callback)
+  },
+
+  onApaExecutionComplete: (callback: (data: unknown) => void) => {
+    if (!isElectron()) return () => {}
+    return window.project4.onApaExecutionComplete(callback)
+  },
+
+  onApaExecutionFailed: (callback: (data: unknown) => void) => {
+    if (!isElectron()) return () => {}
+    return window.project4.onApaExecutionFailed(callback)
+  },
+
+  onApaExecutionStopped: (callback: (data: unknown) => void) => {
+    if (!isElectron()) return () => {}
+    return window.project4.onApaExecutionStopped(callback)
+  },
 }
 
 // Export type for the API

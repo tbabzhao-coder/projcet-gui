@@ -290,6 +290,29 @@ export interface Project4API {
   }) => Promise<IpcResponse>
   feishuStop: () => Promise<IpcResponse>
   onFeishuStatusChange: (callback: (data: unknown) => void) => () => void
+
+  // APA (AI-Powered Automation)
+  apaStartRecording: (options: { url?: string }) => Promise<IpcResponse>
+  apaStopRecording: () => Promise<IpcResponse>
+  apaExecuteSkill: (options: { skillName: string; params: Record<string, string> }) => Promise<IpcResponse>
+  apaStopExecution: () => Promise<IpcResponse>
+  apaUpdateScript: (skillName: string, newScript: string) => Promise<IpcResponse>
+  configAddSkill: (skillConfig: {
+    name: string
+    path: string
+    type: 'directory' | 'file'
+    description?: string
+    disabled?: boolean
+    hasScripts?: boolean
+  }) => Promise<IpcResponse>
+  onApaRecordingStarted: (callback: (data: unknown) => void) => () => void
+  onApaRecordingLog: (callback: (data: unknown) => void) => () => void
+  onApaRecordingStopped: (callback: (data: unknown) => void) => () => void
+  onApaExecutionStarted: (callback: (data: unknown) => void) => () => void
+  onApaExecutionLog: (callback: (data: unknown) => void) => () => void
+  onApaExecutionComplete: (callback: (data: unknown) => void) => () => void
+  onApaExecutionFailed: (callback: (data: unknown) => void) => () => void
+  onApaExecutionStopped: (callback: (data: unknown) => void) => () => void
 }
 
 interface IpcResponse<T = unknown> {
@@ -520,6 +543,22 @@ const api: Project4API = {
   feishuSaveConfig: (config) => ipcRenderer.invoke('feishu:save-config', config),
   feishuStop: () => ipcRenderer.invoke('feishu:stop'),
   onFeishuStatusChange: (callback) => createEventListener('feishu:status-change', callback),
+
+  // APA (AI-Powered Automation)
+  apaStartRecording: (options) => ipcRenderer.invoke('apa:start-recording', options),
+  apaStopRecording: () => ipcRenderer.invoke('apa:stop-recording'),
+  apaExecuteSkill: (options) => ipcRenderer.invoke('apa:execute-skill', options),
+  apaStopExecution: () => ipcRenderer.invoke('apa:stop-execution'),
+  apaUpdateScript: (skillName, newScript) => ipcRenderer.invoke('apa:update-script', skillName, newScript),
+  configAddSkill: (skillConfig) => ipcRenderer.invoke('config:add-skill', skillConfig),
+  onApaRecordingStarted: (callback) => createEventListener('apa:recording-started', callback),
+  onApaRecordingLog: (callback) => createEventListener('apa:recording-log', callback),
+  onApaRecordingStopped: (callback) => createEventListener('apa:recording-stopped', callback),
+  onApaExecutionStarted: (callback) => createEventListener('apa:execution-started', callback),
+  onApaExecutionLog: (callback) => createEventListener('apa:execution-log', callback),
+  onApaExecutionComplete: (callback) => createEventListener('apa:execution-complete', callback),
+  onApaExecutionFailed: (callback) => createEventListener('apa:execution-failed', callback),
+  onApaExecutionStopped: (callback) => createEventListener('apa:execution-stopped', callback),
 }
 
 contextBridge.exposeInMainWorld('project4', api)
