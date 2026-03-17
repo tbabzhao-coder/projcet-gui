@@ -148,7 +148,7 @@ export async function handleMessagesRequest(
     try {
       const forceEnvStream = shouldForceStream()
       const preferStreamByWire = apiType === 'responses' && anthropicRequest.stream === undefined
-      let wantStream = forceEnvStream || preferStreamByWire || anthropicRequest.stream
+      let wantStream = !!(forceEnvStream || preferStreamByWire || anthropicRequest.stream)
 
       const requestToSend = { ...anthropicRequest, stream: wantStream }
       const openaiRequest = apiType === 'responses'
