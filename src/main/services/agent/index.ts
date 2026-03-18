@@ -91,7 +91,7 @@ export {
 // during the transition period
 
 export { createCanUseTool } from './permission-handler'
-export { getWorkingDir, getApiCredentials, sendToRenderer, syncSkillsToConfigDir, calculateSkillsHash, calculateCredentialsHash } from './helpers'
+export { getWorkingDir, getApiCredentials, sendToRenderer, syncSkillsToConfigDir, markSkillsDirty, calculateSkillsHash, calculateCredentialsHash } from './helpers'
 export { resolveCredentialsForSdk, buildBaseSdkOptions, ensureClaudeConfigSettings } from './sdk-config'
 export { parseSDKMessage, buildMessageContent, formatCanvasContext } from './message-utils'
 export { getOrCreateV2Session, activeSessions, v2Sessions } from './session-manager'

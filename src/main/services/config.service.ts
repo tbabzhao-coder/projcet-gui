@@ -663,7 +663,14 @@ function enhancePlaywrightMcpArgs(mcpConfig: any): any {
 // config.service calls registered callbacks (no import from agent)
 // ============================================================================
 
-type ApiConfigChangeHandler = () => void
+export interface ConfigChangeInfo {
+  apiChanged: boolean
+  aiSourcesChanged: boolean
+  skillsChanged: boolean
+  mcpChanged: boolean
+}
+
+type ApiConfigChangeHandler = (info: ConfigChangeInfo) => void
 const apiConfigChangeHandlers: ApiConfigChangeHandler[] = []
 
 /**
@@ -1149,6 +1156,7 @@ export function saveConfig(config: Partial<AppConfig>): AppConfig {
         config.api.apiUrl !== currentConfig.api.apiUrl)
 
     if ((apiChanged || aiSourcesChanged || skillsChanged || mcpChanged) && apiConfigChangeHandlers.length > 0) {
+      const changeInfo: ConfigChangeInfo = { apiChanged, aiSourcesChanged, skillsChanged, mcpChanged }
       const changes = [
         apiChanged && 'API',
         aiSourcesChanged && 'AI Sources',
@@ -1161,7 +1169,7 @@ export function saveConfig(config: Partial<AppConfig>): AppConfig {
       setTimeout(() => {
         apiConfigChangeHandlers.forEach(handler => {
           try {
-            handler()
+            handler(changeInfo)
           } catch (e) {
             console.error('[Config] Error in config change handler:', e)
           }

@@ -9,7 +9,7 @@
  */
 
 import { unstable_v2_createSession } from '@anthropic-ai/claude-agent-sdk'
-import { getConfig, onApiConfigChange, getClaudeConfigDir } from '../config.service'
+import { getConfig, onApiConfigChange, getClaudeConfigDir, type ConfigChangeInfo } from '../config.service'
 import { getConversation } from '../conversation.service'
 import type {
   V2SDKSession,
@@ -521,12 +521,14 @@ export function getActiveSession(conversationId: string): SessionState | undefin
 
 // Register for API config change notifications
 // This is called once when the module loads
-onApiConfigChange(() => {
+onApiConfigChange((info: ConfigChangeInfo) => {
   invalidateAllSessions()
-  // Re-sync skills when config changes (e.g. user adds/removes a skill)
-  const config = getConfig()
-  if (config.skills && Object.keys(config.skills).length > 0) {
-    syncSkillsToConfigDir(config.skills)
+  // Only re-sync skills when skills config actually changed
+  if (info.skillsChanged) {
+    const config = getConfig()
+    if (config.skills && Object.keys(config.skills).length > 0) {
+      syncSkillsToConfigDir(config.skills)
+    }
   }
 })
 

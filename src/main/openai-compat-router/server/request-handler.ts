@@ -36,16 +36,74 @@ export interface RequestHandlerOptions {
 
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000 // 10 minutes
 
+// Anthropic error type -> HTTP status code
+const ERROR_STATUS_MAP: Record<string, number> = {
+  invalid_request_error: 400,
+  authentication_error: 401,
+  permission_error: 403,
+  not_found_error: 404,
+  request_too_large: 413,
+  rate_limit_error: 429,
+  api_error: 500,
+  overloaded_error: 529,
+  timeout_error: 504
+}
+
+// HTTP status code -> Anthropic error type
+const STATUS_ERROR_MAP: Record<number, string> = {
+  400: 'invalid_request_error',
+  401: 'authentication_error',
+  403: 'permission_error',
+  404: 'not_found_error',
+  413: 'request_too_large',
+  429: 'rate_limit_error',
+  500: 'api_error',
+  529: 'overloaded_error'
+}
+
 /**
- * Send error response in Anthropic format
+ * Map HTTP status code to Anthropic error type
+ */
+function getErrorTypeFromStatus(status: number): string {
+  return STATUS_ERROR_MAP[status] || 'api_error'
+}
+
+/**
+ * Extract error type and message from upstream response body.
+ * Tries to parse OpenAI/Anthropic JSON error format first, falls back to status-based mapping.
+ */
+function getUpstreamError(status: number, errorText: string): { type: string; message: string } {
+  try {
+    const json = JSON.parse(errorText)
+    // OpenAI format: { error: { type, message, code } }
+    if (json?.error?.type) {
+      return { type: json.error.type, message: json.error.message || '' }
+    }
+    // Some providers only have error.message without type
+    if (json?.error?.message) {
+      return { type: getErrorTypeFromStatus(status), message: json.error.message }
+    }
+  } catch {
+    // Not JSON, ignore
+  }
+  return {
+    type: getErrorTypeFromStatus(status),
+    message: errorText || `HTTP ${status}`
+  }
+}
+
+/**
+ * Send error response in Anthropic format.
+ * HTTP status is derived from errorType automatically.
  */
 function sendError(
   res: ExpressResponse,
-  statusCode: number,
   errorType: string,
   message: string
 ): void {
-  res.status(statusCode).json({
+  const status = ERROR_STATUS_MAP[errorType] || 500
+  console.log(`[RequestHandler] Sending error: HTTP ${status} ${errorType} - ${message.slice(0, 100)}`)
+  res.status(status).json({
     type: 'error',
     error: { type: errorType, message }
   })
@@ -129,7 +187,7 @@ export async function handleMessagesRequest(
 
   // Validate URL
   if (!isValidEndpointUrl(backendUrl)) {
-    return sendError(res, 400, 'invalid_request_error', getEndpointUrlError(backendUrl))
+    return sendError(res, 'invalid_request_error', getEndpointUrlError(backendUrl))
   }
 
   const apiType = getApiTypeFromUrl(backendUrl)!
@@ -178,15 +236,10 @@ export async function handleMessagesRequest(
 
       let upstreamResp = await fetchUpstream(backendUrl, apiKey, openaiRequest, timeoutMs)
 
-      // Handle errors
+      // Handle errors - extract upstream error type for correct Anthropic error mapping
       if (!upstreamResp.ok) {
         const errorText = await upstreamResp.text().catch(() => '')
-
-        if (upstreamResp.status === 429) {
-          console.error(`[RequestHandler] 429 rate limit: ${errorText.slice(0, 200)}`)
-          pushToRenderer('api-error', { status: 429, error: errorText.slice(0, 500) })
-          return sendError(res, 429, 'rate_limit_error', `Provider error: ${errorText || 'HTTP 429'}`)
-        }
+        const upstream = getUpstreamError(upstreamResp.status, errorText)
 
         const requiresStream = errorText?.toLowerCase().includes('stream must be set to true')
         if (requiresStream && !wantStream) {
@@ -200,14 +253,15 @@ export async function handleMessagesRequest(
 
           if (!upstreamResp.ok) {
             const retryErrorText = await upstreamResp.text().catch(() => '')
+            const retryUpstream = getUpstreamError(upstreamResp.status, retryErrorText)
             console.error(`[RequestHandler] Provider error ${upstreamResp.status}: ${retryErrorText.slice(0, 200)}`)
             pushToRenderer('api-error', { status: upstreamResp.status, error: retryErrorText.slice(0, 500) })
-            return sendError(res, upstreamResp.status, 'api_error', `Provider error: ${retryErrorText || `HTTP ${upstreamResp.status}`}`)
+            return sendError(res, retryUpstream.type, retryUpstream.message)
           }
         } else {
-          console.error(`[RequestHandler] Provider error ${upstreamResp.status}: ${errorText.slice(0, 200)}`)
+          console.error(`[RequestHandler] Provider error ${upstreamResp.status} [${upstream.type}]: ${errorText.slice(0, 200)}`)
           pushToRenderer('api-error', { status: upstreamResp.status, error: errorText.slice(0, 500) })
-          return sendError(res, upstreamResp.status, 'api_error', `Provider error: ${errorText || `HTTP ${upstreamResp.status}`}`)
+          return sendError(res, upstream.type, upstream.message)
         }
       }
 
@@ -246,11 +300,11 @@ export async function handleMessagesRequest(
       // Handle abort/timeout
       if (error?.name === 'AbortError') {
         console.error('[RequestHandler] AbortError (timeout or client disconnect)')
-        return sendError(res, 504, 'timeout_error', 'Request timed out')
+        return sendError(res, 'timeout_error', 'Request timed out')
       }
 
       console.error('[RequestHandler] Internal error:', error?.message || error)
-      return sendError(res, 500, 'internal_error', error?.message || 'Internal error')
+      return sendError(res, 'api_error', error?.message || 'Internal error')
     }
   })
 }

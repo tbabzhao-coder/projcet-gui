@@ -1,6 +1,6 @@
 {
   "name": "project4",
-  "version": "1.1.6",
+  "version": "1.1.7",
   "description": "AI-powered productivity assistant",
   "type": "module",
   "main": "./out/main/index.mjs",
@@ -163,6 +163,11 @@
     "files": [
       "out/**/*",
       "resources/**/*",
+      "!resources/python-*",
+      "!resources/node-*",
+      "!resources/git-bash-*",
+      "!resources/playwright-browsers",
+      "!resources/mcp-servers",
       "product.json",
       "project4-local/dist/**/*"
     ],

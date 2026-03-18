@@ -350,6 +350,14 @@ However, keep the following in English:
 - Technical terms that are commonly used in English (e.g., API, HTTP, JSON)
 - File paths and command-line commands
 - Log messages in code
+
+<context_management>
+Context window is limited. To avoid exceeding it:
+- NEVER read entire large files (>500 lines). Use Grep to search for specific content, or Read with line range (offset + limit).
+- When exploring a codebase, use Glob and Grep first to find relevant files, then read only the relevant sections.
+- Keep tool outputs focused: use specific search patterns instead of broad matches.
+- If you need to process a large file, work on it in sections rather than loading it all at once.
+</context_management>
 `
 }
 
@@ -440,8 +448,18 @@ export function broadcastToAllClients(channel: string, data: Record<string, unkn
 // Skills Management
 // ============================================
 
-// Cache last synced skills hash to avoid redundant file operations on Windows
+// Dirty flag: only true when skills config actually changes.
+// Avoids per-message overhead of hash calculation + existsSync syscalls.
+let _skillsSyncDirty = true  // true on startup so first sync runs
 let _lastSyncedSkillsHash: string | null = null
+
+/**
+ * Mark skills as needing re-sync. Called by config change handler
+ * when skills config is modified (import/delete/enable/disable).
+ */
+export function markSkillsDirty(): void {
+  _skillsSyncDirty = true
+}
 
 /**
  * Sync all enabled skills to the isolated claude-config/skills/ directory.
@@ -457,6 +475,18 @@ let _lastSyncedSkillsHash: string | null = null
  * On Windows, cpSync/rmSync are 5-10x slower than macOS, causing UI freezes during warm-up.
  */
 export function syncSkillsToConfigDir(skills: Record<string, any>): void {
+  // Fast path: if nothing changed since last sync, skip entirely (no syscalls).
+  if (!_skillsSyncDirty) {
+    return
+  }
+
+  // Double-check with hash (handles edge case where dirty was set but config is actually the same)
+  const currentHash = calculateSkillsHash(skills)
+  if (_lastSyncedSkillsHash === currentHash) {
+    _skillsSyncDirty = false
+    return
+  }
+
   const configSkillsDir = join(getClaudeConfigDir(), 'skills')
 
   // Create skills directory if it doesn't exist
@@ -470,13 +500,8 @@ export function syncSkillsToConfigDir(skills: Record<string, any>): void {
   )
 
   if (enabledSkills.length === 0) {
-    return
-  }
-
-  // Calculate hash of current skills to detect changes
-  const currentHash = calculateSkillsHash(skills)
-  if (_lastSyncedSkillsHash === currentHash) {
-    console.log(`[Agent] Skills already synced (hash: ${currentHash}), skipping`)
+    _skillsSyncDirty = false
+    _lastSyncedSkillsHash = currentHash
     return
   }
 
@@ -534,8 +559,9 @@ export function syncSkillsToConfigDir(skills: Record<string, any>): void {
     }
   }
 
-  // Update cache after successful sync
+  // Update cache and clear dirty flag after successful sync
   _lastSyncedSkillsHash = currentHash
+  _skillsSyncDirty = false
 
   console.log(`[Agent] Skills sync complete. CLI will load from: ${configSkillsDir}`)
   console.log(`[Agent] ========================================`)

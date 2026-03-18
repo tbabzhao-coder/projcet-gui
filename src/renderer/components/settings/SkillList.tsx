@@ -4,7 +4,7 @@
  * Compatible with Claude Code CLI skill format (.skill.md files)
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Zap,
   ChevronDown,
@@ -15,7 +15,8 @@ import {
   Upload,
   FolderOpen,
   FileText,
-  AlertCircle
+  AlertCircle,
+  CheckCircle2
 } from 'lucide-react'
 import type { SkillConfig, SkillsConfig } from '../../types'
 import { useTranslation } from '../../i18n'
@@ -362,12 +363,21 @@ export function SkillList({ skills, onSave }: SkillListProps) {
   const { t } = useTranslation()
   const [expandedSkill, setExpandedSkill] = useState<string | null>(null)
   const [isImporting, setIsImporting] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [localSkills, setLocalSkills] = useState<SkillsConfig>(skills)
 
   // Sync with props
   useEffect(() => {
     setLocalSkills(skills)
   }, [skills])
+
+  // Auto-clear success message
+  useEffect(() => {
+    if (!successMessage) return
+    const timer = setTimeout(() => setSuccessMessage(null), 3000)
+    return () => clearTimeout(timer)
+  }, [successMessage])
 
   const skillNames = Object.keys(localSkills)
   const enabledCount = skillNames.filter(name => !localSkills[name].disabled).length
@@ -398,18 +408,22 @@ export function SkillList({ skills, onSave }: SkillListProps) {
     }
   }
 
-  const handleImportSkills = async (importedSkills: SkillConfig[]) => {
-    const newSkills = { ...localSkills }
-    for (const skill of importedSkills) {
-      newSkills[skill.name] = skill
+  const handleImportSkills = useCallback(async (importedSkills: SkillConfig[]) => {
+    setIsSaving(true)
+    try {
+      const newSkills = { ...localSkills }
+      for (const skill of importedSkills) {
+        newSkills[skill.name] = skill
+      }
+      setLocalSkills(newSkills)
+      await onSave(newSkills)
+      setIsImporting(false)
+      const names = importedSkills.map(s => s.name).join(', ')
+      setSuccessMessage(t('Successfully imported {{count}} skill(s)').replace('{{count}}', String(importedSkills.length)) + `: ${names}`)
+    } finally {
+      setIsSaving(false)
     }
-    setLocalSkills(newSkills)
-    await onSave(newSkills)
-    setIsImporting(false)
-
-    // Show success message
-    alert(t('Successfully imported {{count}} skill(s)').replace('{{count}}', String(importedSkills.length)))
-  }
+  }, [localSkills, onSave, t])
 
   return (
     <div className="space-y-3">
@@ -445,6 +459,22 @@ export function SkillList({ skills, onSave }: SkillListProps) {
       <p className="text-sm text-muted-foreground">
         {t('Import and manage Skills to extend AI capabilities with custom commands and workflows.')}
       </p>
+
+      {/* Success toast */}
+      {successMessage && (
+        <div className="flex items-center gap-2 px-3 py-2 text-sm text-green-600 dark:text-green-400 bg-green-500/10 rounded-lg animate-in fade-in duration-200">
+          <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+          <span>{successMessage}</span>
+        </div>
+      )}
+
+      {/* Saving indicator */}
+      {isSaving && (
+        <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground bg-muted/50 rounded-lg">
+          <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+          <span>{t('Saving...')}</span>
+        </div>
+      )}
 
       {/* Skill list */}
       {skillNames.length === 0 && !isImporting ? (

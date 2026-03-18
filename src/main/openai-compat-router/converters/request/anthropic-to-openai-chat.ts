@@ -34,7 +34,8 @@ export function convertAnthropicToOpenAIChat(anthropicRequest: AnthropicRequest)
   const openaiRequest: OpenAIChatRequest = {
     model: anthropicRequest.model,
     messages,
-    stream: anthropicRequest.stream
+    stream: anthropicRequest.stream,
+    ...(anthropicRequest.stream ? { stream_options: { include_usage: true } } : {})
   }
 
   // Add tools if present
