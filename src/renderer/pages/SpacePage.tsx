@@ -413,6 +413,7 @@ export function SpacePage() {
             onRename={handleRenameConversation}
             onTogglePin={handleTogglePin}
             getSessionStatus={getSessionStatus}
+            spacePath={currentSpace.path}
           />
         )}
 

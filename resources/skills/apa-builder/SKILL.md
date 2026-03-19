@@ -52,24 +52,24 @@ AI: "好的，我来帮你创建这个自动化流程。请把目标网站的地
 
 1. **必须使用 `scripts/start-recording.sh` 脚本**，绝对禁止自己拼 `npx playwright codegen` 命令
 2. **必须设置 Bash timeout 为 600000**（10 分钟），因为录制是阻塞式的，需要等用户操作完关闭浏览器
-3. **必须设置 dangerouslyDisableSandbox 为 true**，因为录制需要在 ~/.project4/ 下创建目录，沙箱不允许
+3. **必须设置 dangerouslyDisableSandbox 为 true**，因为录制需要创建目录和启动浏览器，沙箱不允许
 4. **如果脚本报错，禁止自己重新拼命令重试**，必须把错误信息告诉用户
 
 Bash 工具调用参数：
 ```json
 {
-  "command": "bash \"SKILL_DIR/scripts/start-recording.sh\" \"TARGET_URL\"",
+  "command": "bash \"SKILL_DIR/scripts/start-recording.sh\" \"TARGET_URL\" \"WORK_DIR\"",
   "timeout": 600000,
   "dangerouslyDisableSandbox": true
 }
 ```
 
-其中 `SKILL_DIR` 替换为本 skill 所在的目录绝对路径（即包含此 SKILL.md 的目录），`TARGET_URL` 替换为用户提供的目标网址。
+其中 `SKILL_DIR` 替换为本 skill 所在的目录绝对路径（即包含此 SKILL.md 的目录），`TARGET_URL` 替换为用户提供的目标网址，`WORK_DIR` 替换为当前工作空间的目录路径。录制产物将保存在工作空间的 `.apa-recordings/` 子目录下。
 
 脚本会自动完成：
 - 清理上次未正常关闭的浏览器残留锁文件和进程（解决 ProcessSingleton 冲突）
 - 从 URL 提取 hostname 用于 session 隔离
-- 创建临时目录存放录制产物
+- 在工作空间的 `.apa-recordings/` 下创建目录存放录制产物
 - 使用 `--channel chrome` + `--user-data-dir` 启动 playwright codegen
 - 录制完成后自动保存登录态到 session 目录
 
@@ -91,62 +91,63 @@ Bash 工具调用参数：
 - `recording.har`：所有网络请求的完整记录
 - `storage.json`：登录态（cookie、localStorage 等）
 
-用 Read 工具读取 `recording.js` 和 `recording.har`，然后分析：
+用 Read 工具读取 `recording.js` 和 `recording.har`，然后逐步骤分析：
 1. **JS 分析**：识别 DOM 操作步骤、参数、登录节点
-2. **HAR 分析**：识别关键 API 调用，判断是否满足接口模式条件
+2. **HAR 分析**：识别关键 API 调用，逐步骤判断是否有对应的可调用接口
 3. **时间线对齐**：将用户操作与接口调用对应
 
-### 4. 决策生成模式（逐步骤混合）
-
-**不是整体选一种模式，而是逐步骤决策：**
-
-某一步走接口，需同时满足：
+**某一步可走接口**，需同时满足：
 - 用户操作后 500ms 内有明确对应的接口调用
 - 接口 URL 路径与操作语义相关（如点击"搜索" → `/api/search`）
 - 接口不依赖前端动态 token（CSRF、动态 form token 等）
 - 接口参数可以参数化（能识别变量和固定值）
 
-某一步走 Playwright：
+**某一步必须走 Playwright**：
 - 页面导航、登录、点击、填写等浏览器交互
 - 接口依赖前端状态或动态 token
 - 操作本身是浏览器行为（截图、下载等）
 
-### 5. 自然语言反馈
+### 4. 自然语言反馈 + 模式选择
 
-**不展示代码**，用自然语言描述分析结果：
+**不展示代码**，用自然语言描述分析结果，并让用户选择生成模式。
+
+先展示分析发现（哪些步骤有对应接口、哪些必须走页面），然后给出三种模式的建议：
 
 ```
 "录制完成！我分析了你的操作：
-  1. 登录目标网站
-  2. 执行搜索操作
-  3. 进入详情页，提取信息
+  1. 登录目标网站（页面操作）
+  2. 搜索 → 发现对应接口 /api/search（可走接口）
+  3. 进入详情页 → 发现对应接口 /api/detail（可走接口）
 
-  其中部分步骤可以直接调接口，不需要打开浏览器，速度更快。
+  你希望用哪种模式生成自动化脚本？
+
+  1. 接口模式 — 尽量走接口，不打开浏览器，速度最快。登录等必须走浏览器的步骤仍用 Playwright。适合纯数据操作，但如果接口有反爬或动态 token 可能失败。
+  2. 页面模式 — 全部用浏览器操作，兼容性最好但速度较慢。
+  3. 混合模式（推荐）— 能走接口的走接口，其余走浏览器。兼顾速度和稳定性。
+
   [识别出的变量参数] 是每次都不同的参数，对吗？"
 ```
 
-识别参数，用自然语言确认。
+等待用户选择模式并确认参数。
 
-### 6. 生成产物
+### 5. 生成产物
 
-用 Write 工具在 `~/.project4/skills/[skill-name]/` 下生成：
+根据用户选择的模式，用 Write 工具在 `~/.project4/skills/[skill-name]/` 下生成：
 
-**主脚本（混合模式）**：`[name].js`
-- Playwright 步骤和接口步骤共存
-- 使用 `launchPersistentContext` 持久化 session
+**主脚本**：`[name].js`
+- **接口模式**：尽量生成 fetch 调用，登录等必须走浏览器的步骤仍生成 Playwright 操作
+- **页面模式**：所有步骤都生成 Playwright 操作
+- **混合模式**：逐步骤决策，能走接口的生成 fetch 调用，其余生成 Playwright 操作
+- 使用 `launchPersistentContext` 持久化 session（含 Playwright 步骤时）
 - 参数通过环境变量注入
 
 **降级 skill（MCP 模式）**：`SKILL.md`
 - 脚本执行失败时的兜底方案
 - 使用 playwright MCP 工具操作浏览器
 
-### 7. 清理录制临时文件
+**注意：** 录制产物保留在 `RECORDING_DIR`（工作空间的 `.apa-recordings/` 子目录下），方便后续调试查看。不再需要时可由用户手动删除。
 
-```bash
-rm -rf "$RECORDING_DIR"
-```
-
-### 8. 自然语言确认
+### 6. 自然语言确认
 
 ```
 "已创建自动化流程「[流程名称]」。

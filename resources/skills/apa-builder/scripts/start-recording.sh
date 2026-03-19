@@ -2,7 +2,7 @@
 set -e
 
 # APA 录制启动脚本 - 使用 Playwright Chromium
-# 用法: ./start-recording.sh <TARGET_URL>
+# 用法: ./start-recording.sh <TARGET_URL> [WORK_DIR]
 # 环境变量（可选，脚本会自动探测内置路径）:
 #   PLAYWRIGHT_CLI_PATH - playwright CLI 路径
 #   PLAYWRIGHT_BROWSERS_PATH - 浏览器目录路径
@@ -15,6 +15,9 @@ if [ -z "$1" ]; then
 fi
 
 TARGET_URL="$1"
+
+# 第二个参数：工作目录（可选，默认 $PWD）
+WORK_DIR="${2:-$PWD}"
 
 # ============================================
 # 自动探测内置运行时
@@ -79,8 +82,8 @@ HOSTNAME=$(python3 -c "from urllib.parse import urlparse; print(urlparse('$TARGE
 SESSION_DIR="$HOME/.project4/apa-sessions/$HOSTNAME"
 mkdir -p "$SESSION_DIR"
 
-# 创建临时目录存放录制产物
-RECORDING_DIR="$HOME/.project4/apa-recordings/recording-$(date +%s)"
+# 创建临时目录存放录制产物（保存在工作空间目录下）
+RECORDING_DIR="$WORK_DIR/.apa-recordings/recording-$(date +%s)"
 mkdir -p "$RECORDING_DIR"
 echo "录制产物将保存到: $RECORDING_DIR"
 

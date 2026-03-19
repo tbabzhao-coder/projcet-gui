@@ -19,7 +19,7 @@ import {
 } from '../components/icons/ToolIcons'
 import { Header } from '../components/layout/Header'
 import { SpaceGuide } from '../components/space/SpaceGuide'
-import { Monitor } from 'lucide-react'
+import { Monitor, X } from 'lucide-react'
 import { api } from '../api'
 import { useTranslation } from '../i18n'
 
@@ -45,6 +45,14 @@ export function HomePage() {
   const [useCustomPath, setUseCustomPath] = useState(false)
   const [customPath, setCustomPath] = useState<string | null>(null)
   const [defaultPath, setDefaultPath] = useState<string>('~/.project4/spaces')
+
+  // Tag state for create dialog
+  const [newSpaceTags, setNewSpaceTags] = useState<string[]>([])
+  const [tagInput, setTagInput] = useState('')
+
+  // Tag state for edit dialog
+  const [editSpaceTags, setEditSpaceTags] = useState<string[]>([])
+  const [editTagInput, setEditTagInput] = useState('')
 
   // Load spaces on mount
   useEffect(() => {
@@ -99,6 +107,8 @@ export function HomePage() {
     setNewSpaceIcon(DEFAULT_SPACE_ICON)
     setUseCustomPath(false)
     setCustomPath(null)
+    setNewSpaceTags([])
+    setTagInput('')
   }
 
   // Handle space click - no reset needed, SpacePage handles its own state
@@ -111,10 +121,18 @@ export function HomePage() {
   const handleCreateSpace = async () => {
     if (!newSpaceName.trim()) return
 
+    // Auto-add any pending tag input
+    const finalTags = [...newSpaceTags]
+    const pendingTag = tagInput.trim()
+    if (pendingTag && !finalTags.includes(pendingTag) && finalTags.length < 5) {
+      finalTags.push(pendingTag)
+    }
+
     const input: CreateSpaceInput = {
       name: newSpaceName.trim(),
       icon: newSpaceIcon,
-      customPath: useCustomPath && customPath ? customPath : undefined
+      customPath: useCustomPath && customPath ? customPath : undefined,
+      tags: finalTags.length > 0 ? finalTags : undefined
     }
 
     const newSpace = await createSpace(input)
@@ -124,11 +142,16 @@ export function HomePage() {
     }
   }
 
-  // Shorten path for display
+  // Shorten path for display (cross-platform)
   const shortenPath = (path: string | null) => {
     if (!path) return ''
-    const home = path.includes('/Users/') ? path.replace(/\/Users\/[^/]+/, '~') : path
-    return home
+    // macOS: /Users/xxx → ~
+    if (path.includes('/Users/')) return path.replace(/\/Users\/[^/]+/, '~')
+    // Linux: /home/xxx → ~
+    if (path.includes('/home/')) return path.replace(/\/home\/[^/]+/, '~')
+    // Windows: C:\Users\xxx → ~
+    if (/^[A-Z]:\\Users\\/i.test(path)) return path.replace(/^[A-Z]:\\Users\\[^\\]+/i, '~')
+    return path
   }
 
   // Handle delete space
@@ -157,20 +180,32 @@ export function HomePage() {
     setEditingSpace(space)
     setEditSpaceName(space.name)
     setEditSpaceIcon(space.icon as SpaceIconId)
+    setEditSpaceTags(space.tags || [])
+    setEditTagInput('')
   }
 
   // Handle save space edit
   const handleSaveEdit = async () => {
     if (!editingSpace || !editSpaceName.trim()) return
 
+    // Auto-add any pending tag input
+    const finalTags = [...editSpaceTags]
+    const pendingTag = editTagInput.trim()
+    if (pendingTag && !finalTags.includes(pendingTag) && finalTags.length < 5) {
+      finalTags.push(pendingTag)
+    }
+
     await updateSpace(editingSpace.id, {
       name: editSpaceName.trim(),
-      icon: editSpaceIcon
+      icon: editSpaceIcon,
+      tags: finalTags
     })
 
     setEditingSpace(null)
     setEditSpaceName('')
     setEditSpaceIcon(DEFAULT_SPACE_ICON)
+    setEditSpaceTags([])
+    setEditTagInput('')
   }
 
   // Handle cancel edit
@@ -178,6 +213,8 @@ export function HomePage() {
     setEditingSpace(null)
     setEditSpaceName('')
     setEditSpaceIcon(DEFAULT_SPACE_ICON)
+    setEditSpaceTags([])
+    setEditTagInput('')
   }
 
   // Format time ago
@@ -301,45 +338,54 @@ export function HomePage() {
                 key={space.id}
                 onClick={() => handleSpaceClick(space)}
                 style={{ animationDelay: `${index * 50}ms` }}
-                className="relative p-6 rounded-2xl bg-card border border-border shadow-md hover:shadow-lg cursor-pointer group animate-fade-in transition-all duration-300 ease-out"
+                className="relative p-5 rounded-2xl bg-card border border-border shadow-md hover:shadow-lg cursor-pointer group animate-fade-in transition-all duration-300 ease-out"
               >
-                {/* 图标已屏蔽 */}
-                {/* <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center transition-transform duration-300 group-hover:scale-110 mb-4">
-                  <SpaceIcon iconId={space.icon} size={24} />
-                </div> */}
-
-                {/* 内容 */}
-                <div className="mb-3">
+                {/* 名称 + 路径 */}
+                <div className="mb-4">
                   <h4 className="text-base font-semibold text-foreground mb-1">
                     {space.name}
                   </h4>
-                  <p className="text-sm text-foreground-secondary">
-                    {formatTimeAgo(space.updatedAt)} {t('active')}
+                  <p className="text-xs text-muted-foreground truncate" title={space.path}>
+                    {shortenPath(space.path)}
                   </p>
                 </div>
 
-                {/* 统计信息 */}
-                <div className="flex items-center gap-3 text-xs text-foreground-tertiary">
-                  <span>{t('{{count}} artifacts', { count: space.stats.artifactCount })}</span>
+                {/* 统计 + 标签 */}
+                <div className="flex items-center gap-2 text-xs text-foreground-tertiary">
+                  <span>{t('{{count}} files', { count: space.stats.artifactCount })}</span>
                   <span>·</span>
-                  <span>{t('{{conversations}} conversations', { conversations: space.stats.conversationCount })}</span>
+                  <span>{t('{{count}} conversations', { count: space.stats.conversationCount })}</span>
                 </div>
 
+                {/* 标签 chips */}
+                {space.tags && space.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-3">
+                    {space.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[11px] leading-4"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
                 {/* 操作按钮 - 悬停显示 */}
-                <div className="absolute top-4 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                   <button
                     onClick={(e) => handleEditSpace(e, space)}
-                    className="p-2 rounded-lg bg-background/80 backdrop-blur-sm hover:bg-background transition-colors"
+                    className="p-1.5 rounded-lg bg-background/80 backdrop-blur-sm hover:bg-background transition-colors"
                     title={t('Edit Workspace')}
                   >
-                    <Pencil className="w-4 h-4 text-foreground-secondary" />
+                    <Pencil className="w-3.5 h-3.5 text-foreground-secondary" />
                   </button>
                   <button
                     onClick={(e) => handleDeleteSpace(e, space.id)}
-                    className="p-2 rounded-lg bg-background/80 backdrop-blur-sm hover:bg-destructive/10 transition-colors"
+                    className="p-1.5 rounded-lg bg-background/80 backdrop-blur-sm hover:bg-destructive/10 transition-colors"
                     title={t('Delete workspace')}
                   >
-                    <Trash2 className="w-4 h-4 text-destructive" />
+                    <Trash2 className="w-3.5 h-3.5 text-destructive" />
                   </button>
                 </div>
               </div>
@@ -471,6 +517,47 @@ export function HomePage() {
               />
             </div>
 
+            {/* Tags */}
+            <div className="mb-6">
+              <label className="block text-sm text-muted-foreground mb-2">{t('Tags')}</label>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {newSpaceTags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[11px] leading-4"
+                  >
+                    {tag}
+                    <button
+                      type="button"
+                      onClick={() => setNewSpaceTags(newSpaceTags.filter(t => t !== tag))}
+                      className="hover:text-destructive transition-colors"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+              {newSpaceTags.length < 5 && (
+                <input
+                  type="text"
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      const val = tagInput.trim()
+                      if (val && !newSpaceTags.includes(val) && newSpaceTags.length < 5) {
+                        setNewSpaceTags([...newSpaceTags, val])
+                        setTagInput('')
+                      }
+                    }
+                  }}
+                  placeholder={t('Add tag...')}
+                  className="w-full px-4 py-2 bg-input rounded-lg border border-border focus:border-primary focus:outline-none transition-colors text-sm"
+                />
+              )}
+            </div>
+
             {/* Actions */}
             <div className="flex justify-end gap-3">
               <button
@@ -508,6 +595,47 @@ export function HomePage() {
                 className="w-full px-4 py-2 bg-input rounded-lg border border-border focus:border-primary focus:outline-none transition-colors"
                 autoFocus
               />
+            </div>
+
+            {/* Tags */}
+            <div className="mb-6">
+              <label className="block text-sm text-muted-foreground mb-2">{t('Tags')}</label>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {editSpaceTags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[11px] leading-4"
+                  >
+                    {tag}
+                    <button
+                      type="button"
+                      onClick={() => setEditSpaceTags(editSpaceTags.filter(t => t !== tag))}
+                      className="hover:text-destructive transition-colors"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+              {editSpaceTags.length < 5 && (
+                <input
+                  type="text"
+                  value={editTagInput}
+                  onChange={(e) => setEditTagInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      const val = editTagInput.trim()
+                      if (val && !editSpaceTags.includes(val) && editSpaceTags.length < 5) {
+                        setEditSpaceTags([...editSpaceTags, val])
+                        setEditTagInput('')
+                      }
+                    }
+                  }}
+                  placeholder={t('Add tag...')}
+                  className="w-full px-4 py-2 bg-input rounded-lg border border-border focus:border-primary focus:outline-none transition-colors text-sm"
+                />
+              )}
             </div>
 
             {/* Icon select - 已屏蔽 */}

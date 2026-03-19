@@ -176,6 +176,7 @@ export const api = {
     name: string
     icon: string
     customPath?: string
+    tags?: string[]
   }): Promise<ApiResponse> => {
     if (isElectron()) {
       return window.project4.createSpace(input)
@@ -231,7 +232,7 @@ export const api = {
 
   updateSpace: async (
     spaceId: string,
-    updates: { name?: string; icon?: string }
+    updates: { name?: string; icon?: string; tags?: string[] }
   ): Promise<ApiResponse> => {
     if (isElectron()) {
       return window.project4.updateSpace(spaceId, updates)

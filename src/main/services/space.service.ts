@@ -38,6 +38,7 @@ interface Space {
     conversationCount: number
   }
   preferences?: SpacePreferences
+  tags?: string[]
 }
 
 // Layout preferences for a space
@@ -58,6 +59,7 @@ interface SpaceMeta {
   createdAt: string
   updatedAt: string
   preferences?: SpacePreferences
+  tags?: string[]
 }
 
 // Space index for tracking custom path spaces
@@ -357,7 +359,8 @@ function loadSpaceFromPath(spacePath: string): Space | null {
         createdAt: meta.createdAt,
         updatedAt: meta.updatedAt,
         stats,
-        preferences: meta.preferences
+        preferences: meta.preferences,
+        tags: meta.tags
       }
     } catch (error) {
       console.error(`Failed to read space meta for ${spacePath}:`, error)
@@ -405,7 +408,7 @@ export function listSpaces(): Space[] {
 }
 
 // Create a new space
-export function createSpace(input: { name: string; icon: string; customPath?: string }): Space {
+export function createSpace(input: { name: string; icon: string; customPath?: string; tags?: string[] }): Space {
   const id = uuidv4()
   const now = new Date().toISOString()
   const isCustomPath = !!input.customPath
@@ -429,7 +432,8 @@ export function createSpace(input: { name: string; icon: string; customPath?: st
     name: input.name,
     icon: input.icon,
     createdAt: now,
-    updatedAt: now
+    updatedAt: now,
+    tags: input.tags
   }
 
   writeFileSync(join(spacePath, '.project4', 'meta.json'), JSON.stringify(meta, null, 2))
@@ -450,7 +454,8 @@ export function createSpace(input: { name: string; icon: string; customPath?: st
     stats: {
       artifactCount: 0,
       conversationCount: 0
-    }
+    },
+    tags: input.tags
   }
 }
 
@@ -522,7 +527,7 @@ export function openSpaceFolder(spaceId: string): boolean {
 }
 
 // Update space metadata
-export function updateSpace(spaceId: string, updates: { name?: string; icon?: string }): Space | null {
+export function updateSpace(spaceId: string, updates: { name?: string; icon?: string; tags?: string[] }): Space | null {
   const space = getSpace(spaceId)
 
   if (!space || space.isTemp) {
@@ -536,6 +541,7 @@ export function updateSpace(spaceId: string, updates: { name?: string; icon?: st
 
     if (updates.name) meta.name = updates.name
     if (updates.icon) meta.icon = updates.icon
+    if (updates.tags !== undefined) meta.tags = updates.tags
     meta.updatedAt = new Date().toISOString()
 
     writeFileSync(metaPath, JSON.stringify(meta, null, 2))

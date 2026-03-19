@@ -244,12 +244,14 @@ export interface Space {
   updatedAt: string;
   stats: SpaceStats;
   preferences?: SpacePreferences;  // User preferences for this space
+  tags?: string[];
 }
 
 export interface CreateSpaceInput {
   name: string;
   icon: string;
   customPath?: string;
+  tags?: string[];
 }
 
 // ============================================

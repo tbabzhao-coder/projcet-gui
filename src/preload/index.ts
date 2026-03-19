@@ -28,11 +28,11 @@ export interface Project4API {
   getTempSpace: () => Promise<IpcResponse>
   getFeishuSpace: () => Promise<IpcResponse>
   listSpaces: () => Promise<IpcResponse>
-  createSpace: (input: { name: string; icon: string; customPath?: string }) => Promise<IpcResponse>
+  createSpace: (input: { name: string; icon: string; customPath?: string; tags?: string[] }) => Promise<IpcResponse>
   deleteSpace: (spaceId: string) => Promise<IpcResponse>
   getSpace: (spaceId: string) => Promise<IpcResponse>
   openSpaceFolder: (spaceId: string) => Promise<IpcResponse>
-  updateSpace: (spaceId: string, updates: { name?: string; icon?: string }) => Promise<IpcResponse>
+  updateSpace: (spaceId: string, updates: { name?: string; icon?: string; tags?: string[] }) => Promise<IpcResponse>
   getDefaultSpacePath: () => Promise<IpcResponse>
   selectFolder: () => Promise<IpcResponse>
   selectFile: (options?: { filters?: Array<{ name: string; extensions: string[] }> }) => Promise<IpcResponse>

@@ -66,7 +66,7 @@ export function registerSpaceHandlers(): void {
   // Create a new space
   ipcMain.handle(
     'space:create',
-    async (_event, input: { name: string; icon: string; customPath?: string }) => {
+    async (_event, input: { name: string; icon: string; customPath?: string; tags?: string[] }) => {
       try {
         const space = createSpace(input)
         return { success: true, data: space }
@@ -113,7 +113,7 @@ export function registerSpaceHandlers(): void {
   // Update space
   ipcMain.handle(
     'space:update',
-    async (_event, spaceId: string, updates: { name?: string; icon?: string }) => {
+    async (_event, spaceId: string, updates: { name?: string; icon?: string; tags?: string[] }) => {
       try {
         const space = updateSpace(spaceId, updates)
         return { success: true, data: space }
