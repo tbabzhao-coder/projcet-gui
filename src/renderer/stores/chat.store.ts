@@ -113,6 +113,7 @@ interface ChatState {
   selectConversation: (conversationId: string) => void
   deleteConversation: (spaceId: string, conversationId: string) => Promise<boolean>
   renameConversation: (spaceId: string, conversationId: string, newTitle: string) => Promise<boolean>
+  togglePinConversation: (spaceId: string, conversationId: string) => Promise<boolean>
   loadMessageThoughts: (spaceId: string | null, conversationId: string | null, messageId: string) => Promise<Thought[]>
 
   // Messaging
@@ -479,6 +480,50 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return false
     } catch (error) {
       console.error('Failed to rename conversation:', error)
+      return false
+    }
+  },
+
+  // Toggle pin conversation
+  togglePinConversation: async (spaceId, conversationId) => {
+    try {
+      // Get current pinned state
+      const spaceState = get().spaceStates.get(spaceId)
+      const conv = spaceState?.conversations.find((c) => c.id === conversationId)
+      const newPinned = !(conv?.pinned)
+
+      const response = await api.updateConversation(spaceId, conversationId, { pinned: newPinned } as any)
+
+      if (response.success) {
+        set((state) => {
+          // Update cache if exists
+          const newCache = new Map(state.conversationCache)
+          const cached = newCache.get(conversationId)
+          if (cached) {
+            newCache.set(conversationId, { ...cached, pinned: newPinned } as any)
+          }
+
+          // Update space state metadata
+          const newSpaceStates = new Map(state.spaceStates)
+          const existingState = newSpaceStates.get(spaceId)
+          if (existingState) {
+            newSpaceStates.set(spaceId, {
+              ...existingState,
+              conversations: existingState.conversations.map((c) =>
+                c.id === conversationId ? { ...c, pinned: newPinned } : c
+              )
+            })
+          }
+
+          return { spaceStates: newSpaceStates, conversationCache: newCache }
+        })
+
+        return true
+      }
+
+      return false
+    } catch (error) {
+      console.error('Failed to toggle pin conversation:', error)
       return false
     }
   },
@@ -1020,5 +1065,23 @@ export function useIsGenerating(): boolean {
     if (!spaceState?.currentConversationId) return false
     const session = state.sessions.get(spaceState.currentConversationId)
     return session?.isGenerating ?? false
+  })
+}
+
+/**
+ * Selector: Get sorted conversations for current space
+ * Pinned conversations first, then unpinned, each group sorted by updatedAt
+ */
+export function useSortedConversations(): ConversationMeta[] {
+  return useChatStore((state) => {
+    const spaceState = state.currentSpaceId
+      ? state.spaceStates.get(state.currentSpaceId)
+      : null
+    if (!spaceState) return []
+
+    const convs = spaceState.conversations
+    const pinned = convs.filter((c) => c.pinned).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    const unpinned = convs.filter((c) => !c.pinned).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    return [...pinned, ...unpinned]
   })
 }

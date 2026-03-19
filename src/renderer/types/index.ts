@@ -266,6 +266,7 @@ export interface ConversationMeta {
   updatedAt: string;
   messageCount: number;
   preview?: string;  // Last message preview (truncated)
+  pinned?: boolean;
 }
 
 // Full conversation with messages

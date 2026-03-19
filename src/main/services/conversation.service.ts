@@ -95,6 +95,7 @@ export interface ConversationMeta {
   updatedAt: string
   messageCount: number
   preview?: string  // Last message preview (truncated)
+  pinned?: boolean
 }
 
 // Full conversation with messages
@@ -510,7 +511,8 @@ function toMeta(conversation: Conversation): ConversationMeta {
     createdAt: conversation.createdAt,
     updatedAt: conversation.updatedAt,
     messageCount: conversation.messages.length,
-    preview
+    preview,
+    pinned: (conversation as any).pinned || false
   }
 }
 

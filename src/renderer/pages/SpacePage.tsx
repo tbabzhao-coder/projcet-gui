@@ -16,7 +16,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useAppStore } from '../stores/app.store'
 import { useSpaceStore } from '../stores/space.store'
-import { useChatStore } from '../stores/chat.store'
+import { useChatStore, useSortedConversations } from '../stores/chat.store'
 import { useCanvasStore, useCanvasIsOpen, useCanvasIsMaximized } from '../stores/canvas.store'
 import { canvasLifecycle } from '../services/canvas-lifecycle'
 import { useSearchStore } from '../stores/search.store'
@@ -53,11 +53,13 @@ export function SpacePage() {
     createConversation,
     selectConversation,
     deleteConversation,
-    renameConversation
+    renameConversation,
+    togglePinConversation,
+    getSession
   } = useChatStore()
 
   // Get current data from store
-  const conversations = getConversations()
+  const conversations = useSortedConversations()
   const currentConversation = getCurrentConversation()
   const currentConversationId = getCurrentConversationId()
 
@@ -236,6 +238,22 @@ export function SpacePage() {
     }
   }
 
+  // Handle toggle pin conversation
+  const handleTogglePin = async (conversationId: string) => {
+    if (currentSpace) {
+      await togglePinConversation(currentSpace.id, conversationId)
+    }
+  }
+
+  // Get session status for status indicator dots
+  const getSessionStatus = useCallback((conversationId: string) => {
+    const session = getSession(conversationId)
+    if (session.error) return 'error' as const
+    if (session.isThinking) return 'thinking' as const
+    if (session.isStreaming || session.isGenerating) return 'streaming' as const
+    return null
+  }, [getSession])
+
   // Exit maximized mode when canvas closes
   useEffect(() => {
     if (!isCanvasOpen && isCanvasMaximized) {
@@ -393,6 +411,8 @@ export function SpacePage() {
             onNew={handleNewConversation}
             onDelete={handleDeleteConversation}
             onRename={handleRenameConversation}
+            onTogglePin={handleTogglePin}
+            getSessionStatus={getSessionStatus}
           />
         )}
 

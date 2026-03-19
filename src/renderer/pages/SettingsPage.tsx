@@ -1557,41 +1557,10 @@ export function SettingsPage() {
           </section>
           )} */}
 
-          {/* About Section - DISABLED */}
-          {/* <section className="bg-card rounded-xl border border-border p-6">
-            <h2 className="text-lg font-medium mb-4">{t('About')}</h2>
-
-            <div className="space-y-3 text-sm">
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">{t('Version')}</span>
-                <div className="flex items-center gap-3">
-                  <span>{appVersion || '-'}</span>
-                  <button
-                    onClick={handleCheckForUpdates}
-                    disabled={updateStatus.checking}
-                    className="text-xs text-primary hover:text-primary/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {updateStatus.checking ? (
-                      <span className="flex items-center gap-1">
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        {t('Checking...')}
-                      </span>
-                    ) : updateStatus.hasUpdate ? (
-                      <span className="text-emerald-500">{t('New version available')}: {updateStatus.version}</span>
-                    ) : updateStatus.upToDate ? (
-                      <span className="text-muted-foreground">{t('Already up to date')}</span>
-                    ) : (
-                      t('Check for updates')
-                    )}
-                  </button>
-                </div>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">{t('Build')}</span>
-                <span> Powered by Claude Code </span>
-              </div>
-            </div>
-          </section> */}
+          {/* About */}
+          <div className="text-center text-xs text-muted-foreground/50 py-4">
+            v{appVersion || '-'}
+          </div>
         </div>
       </main>
     </div>
