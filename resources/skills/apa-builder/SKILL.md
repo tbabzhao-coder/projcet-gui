@@ -91,9 +91,26 @@ Bash 工具调用参数：
 - `recording.har`：所有网络请求的完整记录
 - `storage.json`：登录态（cookie、localStorage 等）
 
-用 Read 工具读取 `recording.js` 和 `recording.har`，然后逐步骤分析：
-1. **JS 分析**：识别 DOM 操作步骤、参数、登录节点
-2. **HAR 分析**：识别关键 API 调用，逐步骤判断是否有对应的可调用接口
+**分析步骤：**
+
+1. **JS 分析**：用 Read 工具读取 `recording.js`，识别 DOM 操作步骤、参数、登录节点
+2. **HAR 分析**：HAR 文件通常很大（>256KB），**禁止直接用 Read 工具读取**。必须用 Bash 提取关键信息：
+   ```bash
+   # 提取所有 API 请求的 URL、方法、状态码
+   cat "$RECORDING_DIR/recording.har" | python3 -c "
+   import json, sys
+   har = json.load(sys.stdin)
+   for entry in har['log']['entries']:
+       req = entry['request']
+       resp = entry['response']
+       url = req['url']
+       # 过滤掉静态资源
+       if any(ext in url for ext in ['.js', '.css', '.png', '.jpg', '.gif', '.svg', '.woff', '.ico']):
+           continue
+       print(f\"{req['method']} {resp['status']} {url[:150]}\")
+   "
+   ```
+   然后对感兴趣的接口，用 Grep 或 python3 进一步提取请求参数和响应结构。**注意：过滤掉包含 token、password、secret 等敏感字段的请求体。**
 3. **时间线对齐**：将用户操作与接口调用对应
 
 **某一步可走接口**，需同时满足：

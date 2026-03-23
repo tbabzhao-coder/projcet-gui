@@ -378,6 +378,12 @@ Context window is limited. To avoid exceeding it:
 - Keep tool outputs focused: use specific search patterns instead of broad matches.
 - If you need to process a large file, work on it in sections rather than loading it all at once.
 </context_management>
+
+<large_file_handling>
+The Read tool has a 256KB file size limit. If a Read call fails with "exceeds maximum allowed size":
+- Do NOT retry reading the whole file.
+- Use Bash (python3, jq, head, grep) or Read with offset + limit to extract what you need.
+</large_file_handling>
 `
 }
 

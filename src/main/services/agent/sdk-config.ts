@@ -284,6 +284,11 @@ export function buildSdkEnv(params: SdkEnvParams): Record<string, string | numbe
     DISABLE_TELEMETRY: '1',
     DISABLE_COST_WARNINGS: '1',
 
+    // Increase file read and MCP output token limits (default is 25000 tokens / ~256KB)
+    // Allows AI to read larger files (e.g. HAR recordings, large JSON) without hitting token limits
+    CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS: '80000',
+    MAX_MCP_OUTPUT_TOKENS: '80000',
+
     // Playwright: use bundled browsers if available
     ...(getBundledPlaywrightBrowsersPath()
       ? { PLAYWRIGHT_BROWSERS_PATH: getBundledPlaywrightBrowsersPath() }
