@@ -191,7 +191,7 @@ export async function sendMessage(
       }
     }
     if (thinkingEnabled) {
-      sdkOptions.maxThinkingTokens = 10240
+      sdkOptions.thinkingConfig = { type: 'enabled', budgetTokens: 10240 }
     }
 
     const t0 = Date.now()

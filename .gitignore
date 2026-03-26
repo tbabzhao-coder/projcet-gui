@@ -57,3 +57,6 @@ resources/playwright-browsers
 
 # Test files
 test-*.mjs
+
+# Notes/plans
+202[0-9]-*.txt

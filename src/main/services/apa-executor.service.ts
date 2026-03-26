@@ -213,7 +213,14 @@ export function stopExecution(): void {
   if (activeExecutionProcess) {
     const skillName = activeSkillName
     console.log(`[APA Executor] Stopping execution of: ${skillName}`)
-    activeExecutionProcess.kill('SIGTERM')
+    if (process.platform === 'win32') {
+      const pid = activeExecutionProcess.pid
+      if (pid) {
+        spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore' })
+      }
+    } else {
+      activeExecutionProcess.kill('SIGTERM')
+    }
     activeExecutionProcess = null
     activeSkillName = null
     sendToRenderer('apa:execution-stopped', { skillName })

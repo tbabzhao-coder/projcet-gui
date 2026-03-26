@@ -34,7 +34,7 @@ import { registerFeishuHandlers } from '../ipc/feishu'
 import { registerApaHandlers } from '../ipc/apa'
 import { initializeFeishuService, stopFeishuService } from '../services/feishu.service'
 import { registerLarkCliHandlers } from '../ipc/lark-cli'
-import { cleanupOldRecordingTmpDirs } from '../services/apa-recorder.service'
+import { cleanupLegacyRecordingDirs } from '../services/apa-recorder.service'
 
 /**
  * Initialize extended services after window is visible
@@ -86,8 +86,8 @@ export function initializeExtendedServices(): void {
   // APA: Browser automation recording and execution
   registerApaHandlers()
 
-  // APA: Cleanup old recording tmp dirs from previous sessions
-  cleanupOldRecordingTmpDirs()
+  // APA: Cleanup legacy recording dirs from tmpdir (backward compat)
+  cleanupLegacyRecordingDirs()
 
   // Feishu: DISABLED — replaced by lark-cli integration
   // registerFeishuHandlers()

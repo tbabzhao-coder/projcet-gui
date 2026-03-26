@@ -300,7 +300,7 @@ export interface Project4API {
   onLarkCliStatusChange: (callback: (data: unknown) => void) => () => void
 
   // APA (AI-Powered Automation)
-  apaStartRecording: (options: { url?: string }) => Promise<IpcResponse>
+  apaStartRecording: (options: { url?: string; workDir?: string }) => Promise<IpcResponse>
   apaStopRecording: () => Promise<IpcResponse>
   apaExecuteSkill: (options: { skillName: string; params: Record<string, string> }) => Promise<IpcResponse>
   apaStopExecution: () => Promise<IpcResponse>

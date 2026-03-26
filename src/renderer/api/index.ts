@@ -1266,7 +1266,7 @@ export const api = {
   // APA (AI-Powered Automation)
   // ============================================
 
-  apaStartRecording: async (options: { url?: string }): Promise<ApiResponse> => {
+  apaStartRecording: async (options: { url?: string; workDir?: string }): Promise<ApiResponse> => {
     if (!isElectron()) {
       return { success: false, error: 'APA is only available in desktop mode' }
     }

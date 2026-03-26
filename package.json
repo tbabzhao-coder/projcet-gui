@@ -62,7 +62,7 @@
     "i18n": "npm run i18n:extract && npm run i18n:translate"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.1.76",
+    "@anthropic-ai/claude-agent-sdk": "0.2.81",
     "@anthropic-ai/claude-code": "latest",
     "@anthropic-ai/sdk": "latest",
     "@codemirror/commands": "^6.10.1",

@@ -16,33 +16,31 @@ import {
 } from '@anthropic-ai/claude-agent-sdk'
 
 /**
- * SDK Patch Notes (patches/@anthropic-ai+claude-agent-sdk+0.1.76.patch)
+ * SDK Patch Notes (patches/@anthropic-ai+claude-agent-sdk+0.2.81.patch)
  *
  * The @anthropic-ai/claude-agent-sdk unstable_v2_createSession API has limitations
  * that we've patched. These patches can be removed when officially supported.
  *
- * SDK Version: 0.1.76 (upgraded from 0.1.55)
- * Change: receive() method renamed to stream()
+ * SDK Version: 0.2.81 (upgraded from 0.1.76)
  *
- * Official 0.1.76 SDKSessionOptions only supports:
- *   - model, pathToClaudeCodeExecutable, executable, executableArgs, env
+ * Official 0.2.81 SDKSessionOptions supports:
+ *   - model, pathToClaudeCodeExecutable, executable, executableArgs, env,
+ *     allowedTools, disallowedTools, canUseTool, hooks, permissionMode
  *
  * Patch contents:
- * 1. includePartialMessages: true - Enable token-level streaming (stream_event)
- *    - Original SDK hardcodes false, resulting in block-level output only
- *
- * 2. Full parameter pass-through - V2 Session SDKSessionOptions only accepts limited params
- *    - After patch supports: cwd, stderr, systemPrompt.append, maxThinkingTokens, maxTurns,
- *      maxBudgetUsd, fallbackModel, permissionMode, allowDangerouslySkipPermissions,
- *      continueConversation, settingSources, allowedTools, disallowedTools,
- *      mcpServers, strictMcpConfig, canUseTool, hooks, forkSession,
+ * 1. Full parameter pass-through - V2 Session still missing many options
+ *    - After patch supports: cwd, stderr, systemPrompt, thinkingConfig, maxTurns,
+ *      maxBudgetUsd, fallbackModel, allowDangerouslySkipPermissions,
+ *      continueConversation, settingSources, mcpServers (incl. SDK MCP servers),
+ *      strictMcpConfig, includePartialMessages, forkSession,
  *      resumeSessionAt, extraArgs
  *
- * 3. interrupt() method - Interrupt current generation
- *    - Original SDK Session doesn't expose interrupt method
- *    - After patch: can call session.interrupt() to interrupt generation
+ * 2. Runtime control methods on Session
+ *    - interrupt(), setModel(), setMaxThinkingTokens(), setPermissionMode()
  *
- * Patch file location: patches/@anthropic-ai+claude-agent-sdk+0.1.76.patch
+ * 3. Remove CLAUDE_CODE_ENTRYPOINT / CLAUDE_AGENT_SDK_VERSION markers
+ *
+ * Patch file location: patches/@anthropic-ai+claude-agent-sdk+0.2.81.patch
  * Applied automatically via patch-package on npm install
  *
  * Tracking issue: Remove when officially supported
@@ -198,7 +196,7 @@ interface AgentRequest {
   resumeSessionId?: string
   images?: ImageAttachment[]  // Optional images for multi-modal messages
   aiBrowserEnabled?: boolean  // Enable AI Browser tools for this request
-  thinkingEnabled?: boolean  // Enable extended thinking mode (maxThinkingTokens: 10240)
+  thinkingEnabled?: boolean  // Enable extended thinking mode (thinkingConfig budgetTokens: 10240)
   model?: string  // Model to use (for future model switching)
   canvasContext?: CanvasContext  // Current canvas state for AI awareness
 }
@@ -1124,14 +1122,14 @@ export async function sendMessage(
       executable: electronPath,
       executableArgs: ['--no-warnings'],
       // Extended thinking: enable when user requests it (10240 tokens, same as Claude Code CLI Tab)
-      ...(thinkingEnabled ? { maxThinkingTokens: 10240 } : {}),
+      ...(thinkingEnabled ? { thinkingConfig: { type: 'enabled', budgetTokens: 10240 } } : {}),
       // MCP servers configuration
       // - Pass through enabled user MCP servers
       // - Add AI Browser MCP server if enabled
       //
       // NOTE: SDK patch adds proper handling of SDK-type MCP servers in SessionImpl,
       // extracting 'instance' before serialization (mirrors query() behavior).
-      // See patches/@anthropic-ai+claude-agent-sdk+0.1.76.patch
+      // See patches/@anthropic-ai+claude-agent-sdk+0.2.81.patch
       ...((() => {
         const enabledMcp = getEnabledMcpServers(config.mcpServers || {})
         const mcpServers: Record<string, any> = enabledMcp ? { ...enabledMcp } : {}

@@ -313,12 +313,11 @@ export async function getOrCreateV2Session(
   }
   const startTime = Date.now()
 
-  // Requires SDK patch: resume parameter lets CC restore history from disk
-  // Native SDK V2 Session doesn't support resume parameter
+  // resume is passed through via SDK patch to ProcessTransport
   if (sessionId) {
     sdkOptions.resume = sessionId
   }
-  // Requires SDK patch: native SDK ignores most sdkOptions parameters
+  // SDK patch passes additional options beyond SDKSessionOptions type definition
   // Use 'as any' to bypass type check, actual params handled by patched SDK
   const session = (await unstable_v2_createSession(sdkOptions as any)) as unknown as V2SDKSession
 
