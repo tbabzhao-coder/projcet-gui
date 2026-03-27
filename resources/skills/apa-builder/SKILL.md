@@ -1,11 +1,11 @@
 ---
 name: apa-builder
-description: "创建 AI 驱动的浏览器自动化 skill。当用户想录制、创建或调试浏览器自动化操作时使用。支持录制操作流程、智能分析接口调用、生成可复用 skill、对话式调试、自动降级和自我修复。关键词：录制、自动化、浏览器操作、重复性任务、爬虫、数据采集"
+description: "创建 AI 驱动的浏览器自动化 skill。当用户想录制、创建或调试浏览器自动化操作时使用。支持录制操作流程、智能分析接口调用、生成可复用 skill、验证循环、截图诊断和自我修复。关键词：录制、自动化、浏览器操作、重复性任务、爬虫、数据采集"
 ---
 
 # APA Skill Builder
 
-帮助用户通过自然语言对话创建浏览器自动化 skill。
+帮助用户通过自然语言对话创建浏览器自动化 skill。生成的脚本经过自动验证，确保交付前可用。
 
 ## 触发条件
 
@@ -25,7 +25,7 @@ description: "创建 AI 驱动的浏览器自动化 skill。当用户想录制�
 - 登录完全由用户在浏览器中手动完成
 - 录制时遇到登录页，提示"请在浏览器中完成登录"
 - 执行时检测到需要登录，提示"登录已过期，请在浏览器中重新登录"
-- 使用 `launchPersistentContext` 持久化 session，避免重复登录
+- 使用 `storageState` 持久化 session，避免重复登录
 
 ## 创建流程
 
@@ -147,28 +147,128 @@ Bash 工具调用参数：
 
 等待用户选择模式并确认参数。
 
+### 4.5 验收契约
+
+在生成代码前，与用户确认可测试的验收标准。
+
+**AI 根据分析结果，自动生成验收标准草案：**
+
+```
+"在生成脚本前，我先确认一下验收标准：
+  1. ✅ 成功登录（或复用已有登录态）
+  2. ✅ 搜索「{参数}」返回结果列表
+  3. ✅ 提取到至少 1 条数据
+  4. ✅ 数据包含 [字段1]、[字段2]
+
+  这些标准对吗？有需要补充的吗？"
+```
+
+用户确认后，用 Write 工具将契约保存到 `~/.project4/skills/[skill-name]/contract.json`：
+
+```json
+{
+  "criteria": [
+    { "id": 1, "description": "成功登录或复用登录态", "verifyMethod": "screenshot", "stepNum": 2 },
+    { "id": 2, "description": "搜索返回结果列表", "verifyMethod": "screenshot", "stepNum": 3 },
+    { "id": 3, "description": "提取到至少1条数据", "verifyMethod": "output", "stepNum": 4 },
+    { "id": 4, "description": "数据包含必要字段", "verifyMethod": "output", "stepNum": 4 }
+  ]
+}
+```
+
+**重要：** 契约必须在生成代码前确认，不要跳过这一步。
+
 ### 5. 生成产物
 
 根据用户选择的模式，用 Write 工具在 `~/.project4/skills/[skill-name]/` 下生成：
 
 **主脚本**：`[name].js`
+
+脚本必须遵循以下规范（参考 `assets/script-templates/mixed-mode-template.js`）：
+
+- **结构化输出**：每个业务步骤用 `logStep(N, '描述')` 标记，错误用 `logError(N, err)` 标记，最终结果用 `logResult(data)` 输出
+- **截图**：每个关键步骤执行后调用 `screenshot(page, N)` 保存截图到 `APA_SCREENSHOT_DIR`，成功和失败都截
+- **try-catch 包裹**：每个业务步骤独立 try-catch，失败后 `logError` 但继续执行后续步骤（收集更多诊断信息）
+- **关键步骤提前退出**：登录、导航等关键步骤失败时 `process.exit(1)`，因为后续步骤依赖它
 - **接口模式**：尽量生成 fetch 调用，登录等必须走浏览器的步骤仍生成 Playwright 操作
 - **页面模式**：所有步骤都生成 Playwright 操作
 - **混合模式**：逐步骤决策，能走接口的生成 fetch 调用，其余生成 Playwright 操作
-- 使用 `launchPersistentContext` 持久化 session（含 Playwright 步骤时）
+- 使用 `storageState` 加载录制时保存的登录态
 - 参数通过环境变量注入
-
-**降级 skill（MCP 模式）**：`SKILL.md`
-- 脚本执行失败时的兜底方案
-- 使用 playwright MCP 工具操作浏览器
 
 **注意：** 录制产物保留在 `RECORDING_DIR`（工作空间的 `.apa-recordings/` 子目录下），方便后续调试查看。不再需要时可由用户手动删除。
 
-### 6. 自然语言确认
+### 6. 验证循环
+
+生成脚本后，**必须立即运行验证**，不要等用户确认。
+
+#### Phase 1: 运行脚本
+
+用 Bash 执行脚本（与执行流程相同的方式），设置真实参数：
+
+```bash
+APA_SCREENSHOT_DIR="$HOME/.project4/skills/[name]/validation" \
+PARAM_NAME='测试值' \
+node ~/.project4/skills/[name]/[name].js
+```
+
+**timeout 设为 300000（5 分钟）**，**dangerouslyDisableSandbox 设为 true**。
+
+收集：
+- exit code（非 0 表示有错误）
+- stdout（解析 `[APA:STEP]`、`[APA:RESULT]`）
+- stderr（解析 `[APA:ERROR]`）
+
+#### Phase 2: AI 读图验证
+
+用 Read 工具读取 `~/.project4/skills/[name]/validation/step-N.png` 截图。
+
+对照验收契约（`contract.json`）逐条检查：
+- `verifyMethod = "screenshot"` → 读取对应 stepNum 的截图，判断页面是否在预期状态
+- `verifyMethod = "output"` → 检查 `[APA:RESULT]` 输出是否包含预期数据
+- `verifyMethod = "exitCode"` → 检查 exit code 是否为 0
+
+每条标准标记 PASS 或 FAIL，附具体原因。
+
+#### Phase 3: 修复循环（最多 3 轮）
+
+如果有 FAIL 项：
+
+1. 收集所有 FAIL 项 + `[APA:ERROR]` 输出 + 对应截图
+2. 分析失败原因（参考 `references/validation-rules.md` 中的常见失败模式）
+3. 生成针对性修复（只改失败的部分，不重写整个脚本）
+4. 用 Write 工具更新脚本文件
+5. 重新运行 Phase 1 + Phase 2
+
+**3 轮后仍有失败：**
+
+直接告诉用户具体问题，不要降级到 MCP 执行：
 
 ```
-"已创建自动化流程「[流程名称]」。
- 下次你直接告诉我需要处理的内容就行。"
+"脚本验证完成，部分步骤未通过：
+  ✅ 步骤 1: 登录成功
+  ✅ 步骤 2: 导航到搜索页
+  ❌ 步骤 3: 搜索失败 — 搜索按钮的 selector 在页面更新后失效
+
+  建议：可以重新录制搜索这一步，或者手动检查页面结构。"
+```
+
+### 7. 确认
+
+验证全部通过后：
+
+```
+"自动化流程「[流程名称]」已创建并验证通过。
+  ✅ 所有 N 条验收标准通过（经过 M 轮验证）
+  下次你直接告诉我需要处理的内容就行。"
+```
+
+验证部分通过：
+
+```
+"自动化流程「[流程名称]」已创建，但有 K 条标准未通过：
+  - [具体问题]
+  建议先试用一次，遇到问题我可以帮你修复。"
 ```
 
 ## 执行流程（AI 意图识别 + 推荐确认）
@@ -194,13 +294,25 @@ AI 遍历所有已创建的 skill，根据 description 语义匹配，找到最�
 
 ### 4. 执行
 
-用户确认后，用 Bash 执行脚本。生成的脚本内部已经使用 `launchPersistentContext` 指向 `~/.project4/apa-sessions/[hostname]/`，所以会复用录制时保存的登录状态：
+用户确认后，用 Bash 执行脚本。生成的脚本内部已经使用 `storageState` 指向 `~/.project4/apa-sessions/[hostname]/`，所以会复用录制时保存的登录状态：
 
 ```bash
 PARAM_NAME='参数值' node ~/.project4/skills/[skill-name]/[skill-name].js
 ```
 
-参数通过环境变量注入。如果脚本执行失败，自动切换到 MCP 降级模式（使用 playwright MCP 工具操作浏览器）。
+参数通过环境变量注入。
+
+### 5. 执行失败时的自我修复
+
+脚本执行失败时，**不使用 MCP 执行用户任务**，而是诊断并修复脚本：
+
+1. 解析 `[APA:ERROR]` 输出，定位失败步骤
+2. 用 Read 工具读取截图（`step-N.png`），诊断页面状态
+3. 对比脚本预期 vs 截图中的实际状态
+4. 修复脚本中的问题（用 Write 工具更新）
+5. 重新运行修复后的脚本
+6. 成功后持久化修复（调用 `apa:update-script`）
+7. 告知用户："任务已完成，同时自动修复了脚本中的问题，下次会更顺畅。"
 
 如需登录（session 过期），提示用户：`"登录已过期，请在浏览器中重新登录"`
 
@@ -215,7 +327,7 @@ AI 触发增量录制：
 
 ## 脚本生成要点（录制完成后参考）
 
-生成混合模式脚本时记住这几点即可，不需要提前读模板文件：
+生成脚本时记住这几点，不需要提前读模板文件：
 - 用 `chromium.launch({ channel: 'chrome' })` 启动系统 Chrome，失败则回退到默认 Chromium
 - 用 `browser.newContext({ storageState })` 加载录制时保存的登录态
 - 登录态文件：`~/.project4/apa-sessions/[hostname]/storage.json`
@@ -223,7 +335,9 @@ AI 触发增量录制：
 - 接口调用：从 context 提取 Cookie
 - 参数注入：通过环境变量 `process.env.PARAM_NAME`
 - 执行完成后更新 storage（刷新 cookie 有效期）
-- 降级：脚本执行失败时自动生成 MCP skill 兜底
+- **结构化输出**：每步 `logStep`，错误 `logError`，结果 `logResult`
+- **截图**：每步 `screenshot(page, N)`，保存到 `APA_SCREENSHOT_DIR`
+- **关键步骤**：登录/导航失败时 `process.exit(1)` 提前退出
 
 详细模板见 `assets/script-templates/`，**仅在生成脚本时按需加载**。
 
@@ -234,8 +348,8 @@ AI 触发增量录制：
 - `references/api-detection-rules.md`：接口识别规则（生成脚本时参考）
 - `references/selector-strategies.md`：selector 优化策略（生成脚本时参考）
 - `references/login-patterns.md`：登录节点识别模式（生成脚本时参考）
+- `references/validation-rules.md`：验证规则（验证循环时参考）
 - `assets/script-templates/mixed-mode-template.js`：混合模式脚本模板（生成脚本时参考）
-- `assets/script-templates/mcp-skill-template.md`：MCP 降级模板（生成降级 skill 时参考）
 
 **重要：收到用户录制请求后，立即启动录制，不要先读这些文件。等录制完成拿到产物后再按需加载。**
 
@@ -247,5 +361,5 @@ AI 触发增量录制：
 4. **全程自然语言**：用户无需了解任何技术概念
 5. **推荐确认，不自动执行**：匹配到 skill 后推荐给用户确认
 6. **安全第一**：绝不询问、收集、存储用户凭证
-7. **降级兜底**：脚本失败自动切换到 MCP 模式
-8. **自我修复**：MCP 模式成功后，更新脚本文件
+7. **验证必须**：生成脚本后必须运行验证循环，不要跳过
+8. **修复闭环**：脚本失败时解析结构化输出 + 读截图诊断 + 修复脚本 + 重新运行，不使用 MCP 执行

@@ -304,6 +304,7 @@ export interface Project4API {
   apaStopRecording: () => Promise<IpcResponse>
   apaExecuteSkill: (options: { skillName: string; params: Record<string, string> }) => Promise<IpcResponse>
   apaStopExecution: () => Promise<IpcResponse>
+  apaValidateSkill: (options: { skillName: string; params: Record<string, string>; screenshotDir?: string }) => Promise<IpcResponse>
   apaUpdateScript: (skillName: string, newScript: string) => Promise<IpcResponse>
   configAddSkill: (skillConfig: {
     name: string
@@ -565,6 +566,7 @@ const api: Project4API = {
   apaStopRecording: () => ipcRenderer.invoke('apa:stop-recording'),
   apaExecuteSkill: (options) => ipcRenderer.invoke('apa:execute-skill', options),
   apaStopExecution: () => ipcRenderer.invoke('apa:stop-execution'),
+  apaValidateSkill: (options) => ipcRenderer.invoke('apa:validate-skill', options),
   apaUpdateScript: (skillName, newScript) => ipcRenderer.invoke('apa:update-script', skillName, newScript),
   configAddSkill: (skillConfig) => ipcRenderer.invoke('config:add-skill', skillConfig),
   onApaRecordingStarted: (callback) => createEventListener('apa:recording-started', callback),
