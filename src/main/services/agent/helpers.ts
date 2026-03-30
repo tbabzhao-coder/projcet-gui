@@ -383,6 +383,8 @@ Context window is limited. To avoid exceeding it:
 The Read tool has a 256KB file size limit. If a Read call fails with "exceeds maximum allowed size":
 - Do NOT retry reading the whole file.
 - Use Bash (python3, jq, head, grep) or Read with offset + limit to extract what you need.
+- The Read tool's "pages" parameter is only for PDF page ranges like "1-5" or "3".
+- Never send "pages" as an empty string. If no page range is needed, omit the "pages" field entirely.
 </large_file_handling>
 `
 }

@@ -89,6 +89,15 @@ export function createCanUseTool(
     input: Record<string, unknown>,
     _options: { signal: AbortSignal }
   ): Promise<ToolPermissionResult> => {
+    if (toolName === 'Read' && typeof input.pages === 'string' && input.pages.trim() === '') {
+      const { pages, ...sanitizedInput } = input
+      console.log('[Agent] Sanitized Read input by removing empty pages field')
+      return {
+        behavior: 'allow' as const,
+        updatedInput: sanitizedInput
+      }
+    }
+
     // Check file path tools - restrict to working directory
     const fileTools = ['Read', 'Write', 'Edit', 'Grep', 'Glob']
     if (fileTools.includes(toolName)) {

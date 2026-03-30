@@ -1280,7 +1280,11 @@ export const api = {
     return window.project4.apaStopRecording()
   },
 
-  apaExecuteSkill: async (options: { skillName: string; params: Record<string, string> }): Promise<ApiResponse> => {
+  apaExecuteSkill: async (options: {
+    skillName: string
+    params: Record<string, string>
+    timeoutMs?: number
+  }): Promise<ApiResponse> => {
     if (!isElectron()) {
       return { success: false, error: 'APA is only available in desktop mode' }
     }
@@ -1294,7 +1298,12 @@ export const api = {
     return window.project4.apaStopExecution()
   },
 
-  apaValidateSkill: async (options: { skillName: string; params: Record<string, string>; screenshotDir?: string }): Promise<ApiResponse> => {
+  apaValidateSkill: async (options: {
+    skillName: string
+    params: Record<string, string>
+    screenshotDir?: string
+    timeoutMs?: number
+  }): Promise<ApiResponse> => {
     if (!isElectron()) {
       return { success: false, error: 'APA is only available in desktop mode' }
     }

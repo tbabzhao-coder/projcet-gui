@@ -302,9 +302,18 @@ export interface Project4API {
   // APA (AI-Powered Automation)
   apaStartRecording: (options: { url?: string; workDir?: string }) => Promise<IpcResponse>
   apaStopRecording: () => Promise<IpcResponse>
-  apaExecuteSkill: (options: { skillName: string; params: Record<string, string> }) => Promise<IpcResponse>
+  apaExecuteSkill: (options: {
+    skillName: string
+    params: Record<string, string>
+    timeoutMs?: number
+  }) => Promise<IpcResponse>
   apaStopExecution: () => Promise<IpcResponse>
-  apaValidateSkill: (options: { skillName: string; params: Record<string, string>; screenshotDir?: string }) => Promise<IpcResponse>
+  apaValidateSkill: (options: {
+    skillName: string
+    params: Record<string, string>
+    screenshotDir?: string
+    timeoutMs?: number
+  }) => Promise<IpcResponse>
   apaUpdateScript: (skillName: string, newScript: string) => Promise<IpcResponse>
   configAddSkill: (skillConfig: {
     name: string

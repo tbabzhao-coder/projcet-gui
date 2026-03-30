@@ -1691,6 +1691,7 @@ export function getSessionState(conversationId: string): {
 function parseSDKMessage(message: any): Thought | null {
   const timestamp = new Date().toISOString()
   const generateId = () => `thought-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  const shouldSuppressLocalCommandStdout = (output: string): boolean => /^Set model to\b/i.test(output.trim())
 
   // System initialization
   if (message.type === 'system') {
@@ -1753,10 +1754,14 @@ function parseSDKMessage(message: any): Thought | null {
     if (typeof content === 'string') {
       const match = content.match(/<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/)
       if (match) {
+        const stdout = match[1].trim()
+        if (shouldSuppressLocalCommandStdout(stdout)) {
+          return null
+        }
         return {
           id: generateId(),
           type: 'text',  // Render as text block (will show in assistant bubble)
-          content: match[1].trim(),
+          content: stdout,
           timestamp
         }
       }
@@ -1804,6 +1809,10 @@ function buildSystemPromptAppend(workDir: string): string {
   return `
 You are Project4, an AI assistant that helps users accomplish real work.
 All created files will be saved in the user's workspace. Current workspace: ${workDir}.
+
+When using the Read tool:
+- Only provide the optional \`pages\` field for PDF page ranges like "1-5" or "3".
+- Never send \`pages\` as an empty string. If no page range is needed, omit \`pages\` entirely.
 `
 }
 
