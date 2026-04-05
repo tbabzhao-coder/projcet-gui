@@ -57,7 +57,8 @@ export default defineConfig({
       sourcemap: true,
       rollupOptions: {
         input: {
-          index: resolve(__dirname, 'src/main/index.ts')
+          index: resolve(__dirname, 'src/main/index.ts'),
+          'workers/copy-files.worker': resolve(__dirname, 'src/main/workers/copy-files.worker.ts')
         },
         output: {
           format: 'es',

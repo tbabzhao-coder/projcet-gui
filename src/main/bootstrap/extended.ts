@@ -17,7 +17,6 @@
  *   - Overlay: Floating UI elements (optional)
  *   - Search: Global search (optional)
  *   - Performance: Developer monitoring tools (dev only)
- *   - GitBash: Windows Git Bash setup (Windows optional)
  */
 
 import { registerOnboardingHandlers } from '../ipc/onboarding'
@@ -27,11 +26,14 @@ import { registerAIBrowserHandlers, cleanupAIBrowserHandlers } from '../ipc/ai-b
 import { registerOverlayHandlers, cleanupOverlayHandlers } from '../ipc/overlay'
 import { initializeSearchHandlers, cleanupSearchHandlers } from '../ipc/search'
 import { registerPerfHandlers } from '../ipc/perf'
-import { registerGitBashHandlers, initializeGitBashOnStartup } from '../ipc/git-bash'
 import { registerUpdaterHandlers } from '../services/updater.service'
 import { cleanupAllCaches } from '../services/artifact-cache.service'
 import { markExtendedServicesReady } from './state'
 import { getMainWindow, sendToRenderer } from '../services/window.service'
+import { registerFeishuHandlers } from '../ipc/feishu'
+import { registerApaHandlers } from '../ipc/apa'
+import { initializeFeishuService, stopFeishuService } from '../services/feishu.service'
+import { cleanupOldRecordingTmpDirs } from '../services/apa-recorder.service'
 
 /**
  * Initialize extended services after window is visible
@@ -77,22 +79,19 @@ export function initializeExtendedServices(): void {
   // Performance: Developer monitoring tools
   registerPerfHandlers(mainWindow)
 
-  // GitBash: Windows Git Bash detection and setup
-  registerGitBashHandlers()
-
   // Updater: Auto-update functionality
   registerUpdaterHandlers()
 
-  // Windows-specific: Initialize Git Bash in background
-  if (process.platform === 'win32') {
-    initializeGitBashOnStartup()
-      .then((status) => {
-        console.log('[Bootstrap] Git Bash status:', status)
-      })
-      .catch((err) => {
-        console.error('[Bootstrap] Git Bash initialization failed:', err)
-      })
-  }
+  // APA: Browser automation recording and execution
+  registerApaHandlers()
+
+  // APA: Cleanup old recording tmp dirs from previous sessions
+  cleanupOldRecordingTmpDirs()
+
+  // Feishu: Register IPC handlers and initialize service
+  registerFeishuHandlers()
+  initializeFeishuService()
+    .catch(err => console.error('[Bootstrap] Feishu init failed:', err))
 
   const duration = performance.now() - start
   console.log(`[Bootstrap] Extended services registered in ${duration.toFixed(1)}ms`)
@@ -127,6 +126,9 @@ export async function cleanupExtendedServices(): Promise<void> {
 
   // Artifact Cache: Close file watchers and clear caches
   await cleanupAllCaches()
+
+  // Feishu: Stop WebSocket connection
+  await stopFeishuService()
 
   console.log('[Bootstrap] Extended services cleaned up')
 }

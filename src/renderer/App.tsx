@@ -171,6 +171,13 @@ export default function App() {
     }
   }, [])
 
+  // Fetch local router URL once on mount (used for Network panel debug logging)
+  useEffect(() => {
+    api.getRouterUrl().then((url) => {
+      routerUrlRef.current = url
+    }).catch(() => {})
+  }, [])
+
   // Initialize AI Browser IPC listeners for active view sync
   useEffect(() => {
     console.log('[App] Initializing AI Browser store listeners')
@@ -210,36 +217,88 @@ export default function App() {
     })
 
     const unsubToolCall = api.onAgentToolCall((data) => {
-      console.log('[App] Received agent:tool-call event:', data)
       handleAgentToolCall(data as AgentEventBase & ToolCall)
     })
 
     const unsubToolResult = api.onAgentToolResult((data) => {
-      console.log('[App] Received agent:tool-result event:', data)
       handleAgentToolResult(data as AgentEventBase & { toolId: string; result: string; isError: boolean })
     })
 
     const unsubError = api.onAgentError((data) => {
-      console.log('[App] Received agent:error event:', data)
+      console.error('[App] agent:error', (data as any)?.error)
       handleAgentError(data as AgentEventBase & { error: string })
     })
 
     const unsubComplete = api.onAgentComplete((data) => {
-      console.log('[App] Received agent:complete event:', data)
+      const usage = (data as any)?.tokenUsage
+      if (usage) console.log(`[App] agent:complete | in=${usage.inputTokens} out=${usage.outputTokens} cost=$${usage.totalCostUsd?.toFixed(4)}`)
       handleAgentComplete(data as AgentEventBase)
     })
 
     const unsubCompact = api.onAgentCompact((data) => {
-      console.log('[App] Received agent:compact event:', data)
       handleAgentCompact(data as AgentEventBase & { trigger: 'manual' | 'auto'; preTokens: number })
     })
 
     // MCP status updates (global - not per-conversation)
     const unsubMcpStatus = api.onAgentMcpStatus((data) => {
-      console.log('[App] Received agent:mcp-status event:', data)
       const event = data as { servers: Array<{ name: string; status: string }>; timestamp: number }
       if (event.servers) {
         setMcpStatus(event.servers as any, event.timestamp)
+      }
+    })
+
+    // Debug: AI API request/response logs — visible in renderer DevTools Console
+    const unsubDebugApiLog = api.onDebugApiLog((data) => {
+      const d = data as Record<string, any>
+      const ts = new Date(d.ts).toLocaleTimeString()
+
+      // Post to local router so the request appears in Network panel
+      if (routerUrlRef.current) {
+        fetch(`${routerUrlRef.current}/debug/log`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(d)
+        }).catch(() => {})
+      }
+
+      switch (d.type) {
+        case 'session-start':
+          console.groupCollapsed(`%c[API] ▶ ${d.provider} | ${d.model} | maxTurns=${d.maxTurns}${d.aiBrowserEnabled ? ' | browser=ON' : ''}${d.thinkingEnabled ? ' | thinking=ON' : ''}  ${ts}`, 'color:#a78bfa;font-weight:bold')
+          console.log('Provider:', d.provider)
+          console.log('Model:', d.model)
+          console.log('Base URL:', d.baseUrl)
+          console.log('maxTurns:', d.maxTurns)
+          console.groupEnd()
+          break
+        case 'outgoing-request':
+          console.groupCollapsed(`%c[API] → ${d.apiType?.toUpperCase()} ${d.model} | tools=${d.toolCount} msgs=${d.msgCount} stream=${d.stream}  ${ts}`, 'color:#4ade80;font-weight:bold')
+          console.log('URL:', d.url)
+          console.log('Body:', d.body)
+          console.groupEnd()
+          break
+        case 'request':
+          console.groupCollapsed(`%c[API] ↑ POST ${d.url}  ${ts}`, 'color:#60a5fa;font-weight:bold')
+          console.log('Key:', d.key)
+          console.log('Body size:', d.bodySize, 'bytes')
+          console.log('Body:', d.body)
+          console.groupEnd()
+          break
+        case 'response':
+          console.log(`%c[API] ↓ ${d.status} ${d.statusText} (${d.elapsed}ms)  ${ts}`, d.status < 400 ? 'color:#4ade80' : 'color:#f87171')
+          break
+        case 'response-body':
+          console.groupCollapsed(`%c[API] ← ${d.model} | in=${d.inputTokens} out=${d.outputTokens}  ${ts}`, 'color:#a78bfa;font-weight:bold')
+          console.log(d.text)
+          console.groupEnd()
+          break
+        case 'api-error':
+          console.groupCollapsed(`%c[API] ✗ Error ${d.status}  ${ts}`, 'color:#f87171;font-weight:bold')
+          console.error('Error:', d.error)
+          console.groupEnd()
+          break
+        case 'error':
+          console.error(`%c[API] ✗ Fetch failed: ${d.error} (${d.elapsed}ms)  ${ts}`, 'color:#f87171')
+          break
       }
     })
 
@@ -253,6 +312,7 @@ export default function App() {
       unsubComplete()
       unsubCompact()
       unsubMcpStatus()
+      unsubDebugApiLog()
     }
   }, [
     handleAgentMessage,
@@ -270,6 +330,7 @@ export default function App() {
   // Use ref to maintain debounce timer across renders
   const navigationDebounceTimerRef = useRef<NodeJS.Timeout | null>(null)
   const pendingNavigationRef = useRef<(() => void) | null>(null)
+  const routerUrlRef = useRef<string | null>(null)
 
   const debouncedNavigate = (callback: () => void) => {
     // Clear previous timeout

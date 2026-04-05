@@ -113,6 +113,8 @@ interface ChatState {
   selectConversation: (conversationId: string) => void
   deleteConversation: (spaceId: string, conversationId: string) => Promise<boolean>
   renameConversation: (spaceId: string, conversationId: string, newTitle: string) => Promise<boolean>
+  togglePinConversation: (spaceId: string, conversationId: string) => Promise<boolean>
+  loadMessageThoughts: (spaceId: string | null, conversationId: string | null, messageId: string) => Promise<Thought[]>
 
   // Messaging
   sendMessage: (content: string, images?: ImageAttachment[], aiBrowserEnabled?: boolean, thinkingEnabled?: boolean) => Promise<void>
@@ -329,7 +331,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // Load full conversation if not in cache
     if (!conversationCache.has(conversationId)) {
       set({ isLoadingConversation: true })
-      console.log(`[ChatStore] Loading full conversation: ${conversationId}`)
 
       try {
         const response = await api.getConversation(currentSpaceId, conversationId)
@@ -348,7 +349,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
             return { conversationCache: newCache, isLoadingConversation: false }
           })
-          console.log(`[ChatStore] Loaded conversation with ${fullConversation.messages?.length || 0} messages`)
         } else {
           set({ isLoadingConversation: false })
         }
@@ -365,7 +365,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
         const sessionState = response.data as { isActive: boolean; thoughts: Thought[]; spaceId?: string }
 
         if (sessionState.isActive && sessionState.thoughts.length > 0) {
-          console.log(`[ChatStore] Recovering ${sessionState.thoughts.length} thoughts for conversation ${conversationId}`)
 
           set((state) => {
             const newSessions = new Map(state.sessions)
@@ -388,12 +387,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     // Warm up V2 Session in background - non-blocking
     // When user sends a message, V2 Session is ready to avoid delay
-    try {
-      api.ensureSessionWarm(currentSpaceId, conversationId)
-        .catch((error) => console.error('[ChatStore] Session warm up failed:', error))
-    } catch (error) {
-      console.error('[ChatStore] Failed to trigger session warm up:', error)
-    }
+    api.ensureSessionWarm(currentSpaceId, conversationId)
+      .catch((error) => console.error('[ChatStore] Session warm up failed:', error))
   },
 
   // Delete conversation
@@ -486,6 +481,64 @@ export const useChatStore = create<ChatState>((set, get) => ({
     } catch (error) {
       console.error('Failed to rename conversation:', error)
       return false
+    }
+  },
+
+  // Toggle pin conversation
+  togglePinConversation: async (spaceId, conversationId) => {
+    try {
+      // Get current pinned state
+      const spaceState = get().spaceStates.get(spaceId)
+      const conv = spaceState?.conversations.find((c) => c.id === conversationId)
+      const newPinned = !(conv?.pinned)
+
+      const response = await api.updateConversation(spaceId, conversationId, { pinned: newPinned } as any)
+
+      if (response.success) {
+        set((state) => {
+          // Update cache if exists
+          const newCache = new Map(state.conversationCache)
+          const cached = newCache.get(conversationId)
+          if (cached) {
+            newCache.set(conversationId, { ...cached, pinned: newPinned } as any)
+          }
+
+          // Update space state metadata
+          const newSpaceStates = new Map(state.spaceStates)
+          const existingState = newSpaceStates.get(spaceId)
+          if (existingState) {
+            newSpaceStates.set(spaceId, {
+              ...existingState,
+              conversations: existingState.conversations.map((c) =>
+                c.id === conversationId ? { ...c, pinned: newPinned } : c
+              )
+            })
+          }
+
+          return { spaceStates: newSpaceStates, conversationCache: newCache }
+        })
+
+        return true
+      }
+
+      return false
+    } catch (error) {
+      console.error('Failed to toggle pin conversation:', error)
+      return false
+    }
+  },
+
+  loadMessageThoughts: async (spaceId, conversationId, messageId) => {
+    if (!spaceId || !conversationId) return []
+    try {
+      const response = await api.getMessageThoughts(spaceId, conversationId, messageId)
+      if (response.success && Array.isArray(response.data)) {
+        return response.data as Thought[]
+      }
+      return []
+    } catch (error) {
+      console.error('Failed to load message thoughts:', error)
+      return []
     }
   },
 
@@ -718,11 +771,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
         : (content ?? session.streamingContent)
 
       if (isNewTextBlock) {
-        console.log(`[ChatStore] 🆕 New text block signal [${conversationId}]: version ${newTextBlockVersion}`)
-      } else if (delta) {
-        console.log(`[ChatStore] handleAgentMessage [${conversationId}]: +${delta.length} chars (total: ${newContent.length})`)
-      } else {
-        console.log(`[ChatStore] handleAgentMessage [${conversationId}]:`, content?.substring(0, 100), `streaming: ${isStreaming}`)
       }
 
       newSessions.set(conversationId, {
@@ -738,7 +786,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // Handle tool call for a specific conversation
   handleAgentToolCall: (data) => {
     const { conversationId, ...toolCall } = data
-    console.log(`[ChatStore] handleAgentToolCall [${conversationId}]:`, toolCall.name)
+    // tool call logged in App.tsx
 
     if (toolCall.requiresApproval) {
       set((state) => {
@@ -756,14 +804,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // Handle tool result for a specific conversation
   handleAgentToolResult: (data) => {
     const { conversationId, toolId } = data
-    console.log(`[ChatStore] handleAgentToolResult [${conversationId}]:`, toolId)
+    // tool result tracked in thoughts
     // Tool results are tracked in thoughts, no additional state needed
   },
 
   // Handle error for a specific conversation
   handleAgentError: (data) => {
     const { conversationId, error } = data
-    console.log(`[ChatStore] handleAgentError [${conversationId}]:`, error)
+    console.error(`[ChatStore] error [${conversationId}]:`, error)
 
     // Add error thought to session
     const errorThought: Thought = {
@@ -792,7 +840,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // Key: Only set isGenerating=false AFTER backend data is loaded to prevent flash
   handleAgentComplete: async (data) => {
     const { spaceId, conversationId } = data
-    console.log(`[ChatStore] handleAgentComplete [${conversationId}]`)
+    // complete handled in App.tsx with token stats
 
     // First, just stop streaming indicator but keep isGenerating=true
     // This keeps the streaming bubble visible during backend load
@@ -867,7 +915,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
             conversationCache: newCache
           }
         })
-        console.log(`[ChatStore] Conversation reloaded from backend [${conversationId}]`)
       }
     } catch (error) {
       console.error('[ChatStore] Failed to reload conversation:', error)
@@ -891,7 +938,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // Handle thought for a specific conversation
   handleAgentThought: (data) => {
     const { conversationId, thought } = data
-    console.log(`[ChatStore] handleAgentThought [${conversationId}]:`, thought.type, thought.id)
 
     set((state) => {
       const newSessions = new Map(state.sessions)
@@ -900,7 +946,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // Check if thought with same id already exists (avoid duplicates after recovery)
       const existingIds = new Set(session.thoughts.map(t => t.id))
       if (existingIds.has(thought.id)) {
-        console.log(`[ChatStore] Skipping duplicate thought: ${thought.id}`)
         return state // No change
       }
 
@@ -918,9 +963,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
   handleAgentThoughtDelta: (data) => {
     const { conversationId, thoughtId, delta, content, toolInput, isComplete, isReady, isToolInput, toolResult, isToolResult } = data
     // Don't log every delta to reduce console noise (only log on complete or toolResult)
-    if (isComplete || isToolResult) {
-      console.log(`[ChatStore] handleAgentThoughtDelta [${conversationId}]: thought ${thoughtId} ${isToolResult ? 'toolResult merged' : 'complete'}`)
-    }
 
     set((state) => {
       const newSessions = new Map(state.sessions)
@@ -976,7 +1018,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // Handle compact notification - context was compressed
   handleAgentCompact: (data) => {
     const { conversationId, trigger, preTokens } = data
-    console.log(`[ChatStore] handleAgentCompact [${conversationId}]: trigger=${trigger}, preTokens=${preTokens}`)
 
     set((state) => {
       const newSessions = new Map(state.sessions)
@@ -1024,5 +1065,23 @@ export function useIsGenerating(): boolean {
     if (!spaceState?.currentConversationId) return false
     const session = state.sessions.get(spaceState.currentConversationId)
     return session?.isGenerating ?? false
+  })
+}
+
+/**
+ * Selector: Get sorted conversations for current space
+ * Pinned conversations first, then unpinned, each group sorted by updatedAt
+ */
+export function useSortedConversations(): ConversationMeta[] {
+  return useChatStore((state) => {
+    const spaceState = state.currentSpaceId
+      ? state.spaceStates.get(state.currentSpaceId)
+      : null
+    if (!spaceState) return []
+
+    const convs = spaceState.conversations
+    const pinned = convs.filter((c) => c.pinned).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    const unpinned = convs.filter((c) => !c.pinned).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    return [...pinned, ...unpinned]
   })
 }

@@ -101,7 +101,6 @@ function StreamingBubble({
    */
   useEffect(() => {
     if (textBlockVersion !== prevTextBlockVersionRef.current) {
-      console.log(`[StreamingBubble] 🆕 New text block detected: version ${prevTextBlockVersionRef.current} → ${textBlockVersion}`)
       // Reset all state for new text block
       setActiveSnapshotLen(0)
       setSegments([])
@@ -168,7 +167,6 @@ function StreamingBubble({
   useEffect(() => {
     if (!content && thoughts.length === 0) {
       // Full reset for new conversation
-      console.log(`[StreamingBubble] 🔄 Full reset (new conversation)`)
       setSegments([])
       setScrollOffset(0)
       setCurrentHeight(0)

@@ -509,6 +509,13 @@ async function initWatcher(cache: SpaceCache): Promise<void> {
         )
       },
       {
+        // Force native OS backend to skip slow watchman detection.
+        // On Windows, @parcel/watcher tries to spawn 'watchman' first;
+        // when it's not installed the lookup + timeout takes 30-40 seconds,
+        // blocking the libuv thread pool and freezing the entire UI.
+        backend: process.platform === 'win32' ? 'windows'
+               : process.platform === 'linux' ? 'inotify'
+               : 'fs-events',
         // @parcel/watcher ignore: paths matched in C++ layer, never reach JS.
         // CPP_LEVEL_IGNORE_DIRS contains universally-safe directories that are
         // NEVER user content (node_modules, __pycache__, .gradle, etc.).
@@ -762,16 +769,20 @@ async function scanDirectoryRecursive(
       return true
     })
 
-    // Create artifacts synchronously (no stat calls)
+    // Create artifacts for all entries (no stat calls)
     for (const entry of filteredEntries) {
       artifacts.push(createArtifactFromDirent(entry, dirPath, rootPath, spaceId))
+    }
 
-      // Recursively scan subdirectories
-      if (entry.isDirectory()) {
-        const fullPath = join(dirPath, entry.name)
-        const subItems = await scanDirectoryRecursive(
-          fullPath, rootPath, spaceId, maxDepth, currentDepth + 1, ig
-        )
+    // Recursively scan subdirectories in parallel
+    const subDirs = filteredEntries.filter(e => e.isDirectory())
+    if (subDirs.length > 0) {
+      const subResults = await Promise.all(
+        subDirs.map(e => scanDirectoryRecursive(
+          join(dirPath, e.name), rootPath, spaceId, maxDepth, currentDepth + 1, ig
+        ))
+      )
+      for (const subItems of subResults) {
         artifacts.push(...subItems)
       }
     }

@@ -95,6 +95,7 @@ export interface ConversationMeta {
   updatedAt: string
   messageCount: number
   preview?: string  // Last message preview (truncated)
+  pinned?: boolean
 }
 
 // Full conversation with messages
@@ -510,7 +511,8 @@ function toMeta(conversation: Conversation): ConversationMeta {
     createdAt: conversation.createdAt,
     updatedAt: conversation.updatedAt,
     messageCount: conversation.messages.length,
-    preview
+    preview,
+    pinned: (conversation as any).pinned || false
   }
 }
 
@@ -636,6 +638,34 @@ export function listConversations(spaceId: string): ConversationMeta[] {
   }
 
   return metas
+}
+
+// Create a conversation with a specific ID (used by Feishu integration)
+export function createConversationWithId(spaceId: string, conversationId: string, title?: string): Conversation {
+  // Check if already exists
+  const existing = getConversation(spaceId, conversationId)
+  if (existing) return existing
+
+  const now = new Date().toISOString()
+  const conversation: Conversation = {
+    id: conversationId,
+    spaceId,
+    title: title || generateTitle(),
+    createdAt: now,
+    updatedAt: now,
+    messageCount: 0,
+    messages: []
+  }
+
+  const conversationsDir = getConversationsDir(spaceId)
+  if (!existsSync(conversationsDir)) {
+    mkdirSync(conversationsDir, { recursive: true })
+  }
+
+  writeFileSync(join(conversationsDir, `${conversationId}.json`), JSON.stringify(conversation, null, 2))
+  updateIndexEntry(conversationsDir, spaceId, conversationId, toMeta(conversation))
+
+  return conversation
 }
 
 // Create a new conversation

@@ -2,7 +2,7 @@
  * Preload Script - Exposes IPC to renderer
  */
 
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 // Type definitions for exposed API
 export interface Project4API {
@@ -22,15 +22,17 @@ export interface Project4API {
   refreshAISourcesConfig: () => Promise<IpcResponse>
   listSkills: () => Promise<IpcResponse<Array<{ key: string; description: string }>>>
   listMcp: () => Promise<IpcResponse<Array<{ key: string; description: string }>>>
+  getRouterUrl: () => Promise<string | null>
 
   // Space
   getTempSpace: () => Promise<IpcResponse>
+  getFeishuSpace: () => Promise<IpcResponse>
   listSpaces: () => Promise<IpcResponse>
-  createSpace: (input: { name: string; icon: string; customPath?: string }) => Promise<IpcResponse>
+  createSpace: (input: { name: string; icon: string; customPath?: string; tags?: string[] }) => Promise<IpcResponse>
   deleteSpace: (spaceId: string) => Promise<IpcResponse>
   getSpace: (spaceId: string) => Promise<IpcResponse>
   openSpaceFolder: (spaceId: string) => Promise<IpcResponse>
-  updateSpace: (spaceId: string, updates: { name?: string; icon?: string }) => Promise<IpcResponse>
+  updateSpace: (spaceId: string, updates: { name?: string; icon?: string; tags?: string[] }) => Promise<IpcResponse>
   getDefaultSpacePath: () => Promise<IpcResponse>
   selectFolder: () => Promise<IpcResponse>
   selectFile: (options?: { filters?: Array<{ name: string; extensions: string[] }> }) => Promise<IpcResponse>
@@ -62,6 +64,7 @@ export interface Project4API {
     conversationId: string,
     updates: Record<string, unknown>
   ) => Promise<IpcResponse>
+  getMessageThoughts: (spaceId: string, conversationId: string, messageId: string) => Promise<IpcResponse>
 
   // Agent
   sendMessage: (request: {
@@ -116,6 +119,7 @@ export interface Project4API {
   onAgentThoughtDelta: (callback: (data: unknown) => void) => () => void
   onAgentMcpStatus: (callback: (data: unknown) => void) => () => void
   onAgentCompact: (callback: (data: unknown) => void) => () => void
+  onDebugApiLog: (callback: (data: unknown) => void) => () => void
 
   // Artifact
   listArtifacts: (spaceId: string) => Promise<IpcResponse>
@@ -140,6 +144,11 @@ export interface Project4API {
     language?: string
     mimeType: string
   }>>
+  countFiles: (files: string[]) => Promise<IpcResponse<{ total: number }>>
+  copyFilesToSpace: (files: string[], targetDir: string, jobId: string) => Promise<IpcResponse>
+  onCopyProgress: (cb: (data: { jobId: string; copied: number; total: number; currentFile: string }) => void) => () => void
+  onCopyDone: (cb: (data: { jobId: string; type: 'done' | 'error'; message?: string }) => void) => () => void
+  getPathForFile: (file: File) => string
 
   // Onboarding
   writeOnboardingArtifact: (spaceId: string, filename: string, content: string) => Promise<IpcResponse>
@@ -270,6 +279,40 @@ export interface Project4API {
     extendedReadyAt: number
   }>>
   onBootstrapExtendedReady: (callback: (data: { timestamp: number; duration: number }) => void) => () => void
+
+  // Feishu Integration
+  feishuGetStatus: () => Promise<IpcResponse>
+  feishuSaveConfig: (config: {
+    enabled: boolean
+    appId: string
+    appSecret: string
+    domain: 'feishu' | 'lark'
+  }) => Promise<IpcResponse>
+  feishuStop: () => Promise<IpcResponse>
+  onFeishuStatusChange: (callback: (data: unknown) => void) => () => void
+
+  // APA (AI-Powered Automation)
+  apaStartRecording: (options: { url?: string }) => Promise<IpcResponse>
+  apaStopRecording: () => Promise<IpcResponse>
+  apaExecuteSkill: (options: { skillName: string; params: Record<string, string> }) => Promise<IpcResponse>
+  apaStopExecution: () => Promise<IpcResponse>
+  apaUpdateScript: (skillName: string, newScript: string) => Promise<IpcResponse>
+  configAddSkill: (skillConfig: {
+    name: string
+    path: string
+    type: 'directory' | 'file'
+    description?: string
+    disabled?: boolean
+    hasScripts?: boolean
+  }) => Promise<IpcResponse>
+  onApaRecordingStarted: (callback: (data: unknown) => void) => () => void
+  onApaRecordingLog: (callback: (data: unknown) => void) => () => void
+  onApaRecordingStopped: (callback: (data: unknown) => void) => () => void
+  onApaExecutionStarted: (callback: (data: unknown) => void) => () => void
+  onApaExecutionLog: (callback: (data: unknown) => void) => () => void
+  onApaExecutionComplete: (callback: (data: unknown) => void) => () => void
+  onApaExecutionFailed: (callback: (data: unknown) => void) => () => void
+  onApaExecutionStopped: (callback: (data: unknown) => void) => () => void
 }
 
 interface IpcResponse<T = unknown> {
@@ -280,17 +323,13 @@ interface IpcResponse<T = unknown> {
 
 // Create event listener with cleanup
 function createEventListener(channel: string, callback: (data: unknown) => void): () => void {
-  console.log(`[Preload] Creating event listener for channel: ${channel}`)
-
   const handler = (_event: Electron.IpcRendererEvent, data: unknown): void => {
-    console.log(`[Preload] Received event on channel: ${channel}`, data)
     callback(data)
   }
 
   ipcRenderer.on(channel, handler)
 
   return () => {
-    console.log(`[Preload] Removing event listener for channel: ${channel}`)
     ipcRenderer.removeListener(channel, handler)
   }
 }
@@ -314,9 +353,11 @@ const api: Project4API = {
   refreshAISourcesConfig: () => ipcRenderer.invoke('config:refresh-ai-sources'),
   listSkills: () => ipcRenderer.invoke('config:list-skills'),
   listMcp: () => ipcRenderer.invoke('config:list-mcp'),
+  getRouterUrl: () => ipcRenderer.invoke('config:get-router-url'),
 
   // Space
   getTempSpace: () => ipcRenderer.invoke('space:get-project4'),
+  getFeishuSpace: () => ipcRenderer.invoke('space:get-feishu'),
   listSpaces: () => ipcRenderer.invoke('space:list'),
   createSpace: (input) => ipcRenderer.invoke('space:create', input),
   deleteSpace: (spaceId) => ipcRenderer.invoke('space:delete', spaceId),
@@ -343,6 +384,8 @@ const api: Project4API = {
     ipcRenderer.invoke('conversation:add-message', spaceId, conversationId, message),
   updateLastMessage: (spaceId, conversationId, updates) =>
     ipcRenderer.invoke('conversation:update-last-message', spaceId, conversationId, updates),
+  getMessageThoughts: (spaceId, conversationId, messageId) =>
+    ipcRenderer.invoke('conversation:get-message-thoughts', spaceId, conversationId, messageId),
 
   // Agent
   sendMessage: (request) => ipcRenderer.invoke('agent:send-message', request),
@@ -365,6 +408,7 @@ const api: Project4API = {
   onAgentThoughtDelta: (callback) => createEventListener('agent:thought-delta', callback),
   onAgentMcpStatus: (callback) => createEventListener('agent:mcp-status', callback),
   onAgentCompact: (callback) => createEventListener('agent:compact', callback),
+  onDebugApiLog: (callback) => createEventListener('debug:api-log', callback),
 
   // Artifact
   listArtifacts: (spaceId) => ipcRenderer.invoke('artifact:list', spaceId),
@@ -377,6 +421,11 @@ const api: Project4API = {
   readArtifactContent: (filePath) => ipcRenderer.invoke('artifact:read-content', filePath),
   saveArtifactContent: (filePath, content) => ipcRenderer.invoke('artifact:save-content', filePath, content),
   detectFileType: (filePath) => ipcRenderer.invoke('artifact:detect-file-type', filePath),
+  countFiles: (files) => ipcRenderer.invoke('artifact:count-files', files),
+  copyFilesToSpace: (files, targetDir, jobId) => ipcRenderer.invoke('artifact:copy-files', { files, targetDir, jobId }),
+  onCopyProgress: (cb) => createEventListener('artifact:copy-progress', cb as (data: unknown) => void),
+  onCopyDone: (cb) => createEventListener('artifact:copy-done', cb as (data: unknown) => void),
+  getPathForFile: (file) => webUtils.getPathForFile(file),
 
   // Onboarding
   writeOnboardingArtifact: (spaceId, filename, content) =>
@@ -488,6 +537,28 @@ const api: Project4API = {
   // Bootstrap lifecycle
   getBootstrapStatus: () => ipcRenderer.invoke('bootstrap:get-status'),
   onBootstrapExtendedReady: (callback) => createEventListener('bootstrap:extended-ready', callback as (data: unknown) => void),
+
+  // Feishu Integration
+  feishuGetStatus: () => ipcRenderer.invoke('feishu:get-status'),
+  feishuSaveConfig: (config) => ipcRenderer.invoke('feishu:save-config', config),
+  feishuStop: () => ipcRenderer.invoke('feishu:stop'),
+  onFeishuStatusChange: (callback) => createEventListener('feishu:status-change', callback),
+
+  // APA (AI-Powered Automation)
+  apaStartRecording: (options) => ipcRenderer.invoke('apa:start-recording', options),
+  apaStopRecording: () => ipcRenderer.invoke('apa:stop-recording'),
+  apaExecuteSkill: (options) => ipcRenderer.invoke('apa:execute-skill', options),
+  apaStopExecution: () => ipcRenderer.invoke('apa:stop-execution'),
+  apaUpdateScript: (skillName, newScript) => ipcRenderer.invoke('apa:update-script', skillName, newScript),
+  configAddSkill: (skillConfig) => ipcRenderer.invoke('config:add-skill', skillConfig),
+  onApaRecordingStarted: (callback) => createEventListener('apa:recording-started', callback),
+  onApaRecordingLog: (callback) => createEventListener('apa:recording-log', callback),
+  onApaRecordingStopped: (callback) => createEventListener('apa:recording-stopped', callback),
+  onApaExecutionStarted: (callback) => createEventListener('apa:execution-started', callback),
+  onApaExecutionLog: (callback) => createEventListener('apa:execution-log', callback),
+  onApaExecutionComplete: (callback) => createEventListener('apa:execution-complete', callback),
+  onApaExecutionFailed: (callback) => createEventListener('apa:execution-failed', callback),
+  onApaExecutionStopped: (callback) => createEventListener('apa:execution-stopped', callback),
 }
 
 contextBridge.exposeInMainWorld('project4', api)

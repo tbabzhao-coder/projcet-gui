@@ -4,8 +4,9 @@
 
 import { app } from 'electron'
 import { join } from 'path'
+import * as path from 'path'
 import { homedir } from 'os'
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { getPythonExecutable, getBundledPythonPath } from './python-runtime.service'
 import { getBundledNodeExecutable } from './node-runtime.service'
 
@@ -34,8 +35,11 @@ type SkillsConfig = Record<string, SkillConfig>
 /**
  * Get built-in skills bundled with the application
  * These skills are automatically available to all users without manual import
+ * Results are cached since built-in resources don't change at runtime.
  */
+let _builtInSkillsCache: SkillsConfig | null = null
 function getBuiltInSkills(): SkillsConfig {
+  if (_builtInSkillsCache) return _builtInSkillsCache
   const builtIn: SkillsConfig = {}
 
   try {
@@ -172,10 +176,49 @@ function getBuiltInSkills(): SkillsConfig {
 
     // Add more built-in skills here in the future
 
+    // apa-builder skill - AI-Powered Automation skill builder
+    const apaBuilderPath = join(skillsDir, 'apa-builder')
+    if (existsSync(apaBuilderPath)) {
+      const skillMdPath = join(apaBuilderPath, 'SKILL.md')
+      if (existsSync(skillMdPath)) {
+        builtIn['apa-builder'] = {
+          name: 'apa-builder',
+          path: apaBuilderPath,
+          type: 'directory',
+          description: '创建 AI 驱动的浏览器自动化 skill。当用户想录制、创建或调试浏览器自动化操作时使用。支持录制操作流程、智能分析接口调用、生成可复用 skill、对话式调试、自动降级和自我修复。关键词：录制、自动化、浏览器操作、重复性任务、爬虫、数据采集',
+          disabled: false,
+          hasScripts: true,
+          __builtIn: true
+        }
+        console.log('[Config] Built-in apa-builder skill configured:')
+        console.log('  Path:', apaBuilderPath)
+      }
+    }
+
+    // skill-vetter - Security-first skill vetting
+    const skillVetterPath = join(skillsDir, 'skill-vetter-1.0.0')
+    if (existsSync(skillVetterPath)) {
+      const skillMdPath = join(skillVetterPath, 'SKILL.md')
+      if (existsSync(skillMdPath)) {
+        builtIn['skill-vetter'] = {
+          name: 'skill-vetter',
+          path: skillVetterPath,
+          type: 'directory',
+          description: 'Security-first skill vetting for AI agents. Use before installing any skill from ClawdHub, GitHub, or other sources. Checks for red flags, permission scope, and suspicious patterns.',
+          disabled: false,
+          hasScripts: false,
+          __builtIn: true
+        }
+        console.log('[Config] Built-in skill-vetter skill configured:')
+        console.log('  Path:', skillVetterPath)
+      }
+    }
+
   } catch (error) {
     console.warn('[Config] Failed to configure built-in skills:', error)
   }
 
+  _builtInSkillsCache = builtIn
   return builtIn
 }
 
@@ -273,7 +316,10 @@ function getBuiltInMcpServerPath(packageName: string): string | null {
 // - Development: uses project node_modules
 // - Production: uses app.asar packaged modules
 // - Cross-platform: automatically finds node in PATH
+// Results are cached since built-in resources don't change at runtime.
+let _builtInMcpCache: Record<string, any> | null = null
 function getBuiltInMcpServers(): Record<string, any> {
+  if (_builtInMcpCache) return _builtInMcpCache
   const builtIn: Record<string, any> = {}
 
   // Playwright MCP
@@ -488,6 +534,74 @@ function getBuiltInMcpServers(): Record<string, any> {
     console.warn('[Config] quick-chart-mcp not found, QuickChart MCP will not be available')
   }
 
+  // PDF Tools MCP - PDF manipulation with OCR capabilities using Tesseract
+  // bin/pdf-tools-mcp.js is a Node launcher that spawns Python internally
+  // It respects the PYTHON env var to use bundled Python
+  const isDev2 = !app.isPackaged || process.env.NODE_ENV === 'development'
+  let pdfToolsBinScript: string | null = null
+
+  if (isDev2) {
+    const candidate = path.join(app.getAppPath(), 'node_modules', 'pdf-tools-mcp', 'bin', 'pdf-tools-mcp.js')
+    if (existsSync(candidate)) pdfToolsBinScript = candidate
+  } else {
+    const candidate = path.join(process.resourcesPath || app.getAppPath(), 'mcp-servers', 'pdf-tools-mcp', 'bin', 'pdf-tools-mcp.js')
+    if (existsSync(candidate)) pdfToolsBinScript = candidate
+  }
+
+  if (pdfToolsBinScript) {
+    const bundledNode = getBundledNodeExecutable()
+    const nodeCommand = bundledNode || 'node'
+    const bundledPython = getBundledPythonPath()
+
+    builtIn['pdf-tools'] = {
+      command: nodeCommand,
+      args: [pdfToolsBinScript],
+      disabled: true,
+      __builtIn: true,
+      env: {
+        MCP_MODE: 'stdio',
+        ...(bundledPython ? { PYTHON: bundledPython } : {})
+      }
+    }
+    console.log('[Config] Built-in PDF Tools MCP server configured:')
+    console.log('  Command:', nodeCommand, pdfToolsBinScript)
+    console.log('  PYTHON:', bundledPython || '(system python)')
+  } else {
+    console.warn('[Config] pdf-tools-mcp not found, PDF Tools MCP will not be available')
+  }
+
+  // Image OCR MCP - Pure JavaScript OCR using Tesseract.js (no system dependencies)
+  // Supports PNG, JPG, JPEG, BMP, TIFF, WebP with 100+ languages
+  const isDev = !app.isPackaged || process.env.NODE_ENV === 'development'
+  let imageOcrIndexPath: string
+
+  if (isDev) {
+    // Development mode: use resources directory in project root
+    imageOcrIndexPath = path.join(app.getAppPath(), 'resources', 'mcp-servers', 'image-ocr-mcp', 'index.js')
+  } else {
+    // Production mode: use extraResources
+    imageOcrIndexPath = path.join(process.resourcesPath || app.getAppPath(), 'mcp-servers', 'image-ocr-mcp', 'index.js')
+  }
+
+  if (existsSync(imageOcrIndexPath)) {
+    const bundledNode = getBundledNodeExecutable()
+    const nodeCommand = bundledNode || 'node'
+
+    builtIn['image-ocr'] = {
+      command: nodeCommand,
+      args: [imageOcrIndexPath],
+      disabled: true,
+      __builtIn: true
+    }
+    console.log('[Config] Built-in Image OCR MCP server configured:')
+    console.log('  Command:', nodeCommand)
+    console.log('  Script:', imageOcrIndexPath)
+    console.log('  Note: Pure JavaScript implementation, no system dependencies required')
+  } else {
+    console.warn('[Config] image-ocr-mcp not found at:', imageOcrIndexPath)
+  }
+
+  _builtInMcpCache = builtIn
   return builtIn
 }
 
@@ -549,7 +663,14 @@ function enhancePlaywrightMcpArgs(mcpConfig: any): any {
 // config.service calls registered callbacks (no import from agent)
 // ============================================================================
 
-type ApiConfigChangeHandler = () => void
+export interface ConfigChangeInfo {
+  apiChanged: boolean
+  aiSourcesChanged: boolean
+  skillsChanged: boolean
+  mcpChanged: boolean
+}
+
+type ApiConfigChangeHandler = (info: ConfigChangeInfo) => void
 const apiConfigChangeHandlers: ApiConfigChangeHandler[] = []
 
 /**
@@ -595,6 +716,10 @@ interface AppConfig {
   onboarding: {
     completed: boolean
   }
+  // Agent configuration
+  agent?: {
+    maxTurns: number  // Maximum tool call turns per message (default: 50)
+  }
   // MCP servers configuration (compatible with Cursor / Claude Desktop format)
   mcpServers: Record<string, McpServerConfig>
   // Skills configuration (compatible with Claude Code CLI format)
@@ -607,6 +732,13 @@ interface AppConfig {
     installed: boolean
     path: string | null
     skipped: boolean
+  }
+  // Feishu/Lark integration
+  feishu?: {
+    enabled: boolean
+    appId: string
+    appSecret: string
+    domain: 'feishu' | 'lark'
   }
 }
 
@@ -678,6 +810,10 @@ export function getConfigPath(): string {
 
 export function getTempSpacePath(): string {
   return join(getProject4Dir(), 'temp')
+}
+
+export function getFeishuSpacePath(): string {
+  return join(getProject4Dir(), 'feishu')
 }
 
 export function getSpacesDir(): string {
@@ -810,7 +946,7 @@ export async function initializeApp(): Promise<void> {
   const tempArtifactsDir = join(tempDir, 'artifacts')
   const tempConversationsDir = join(tempDir, 'conversations')
 
-  // Create directories if they don't exist
+  // Create directories if they don't exist (feishu dirs created on-demand when configured)
   const dirs = [project4Dir, tempDir, spacesDir, tempArtifactsDir, tempConversationsDir]
   for (const dir of dirs) {
     if (!existsSync(dir)) {
@@ -825,8 +961,14 @@ export async function initializeApp(): Promise<void> {
   }
 }
 
+// In-memory config cache to avoid repeated disk reads on Windows
+// Invalidated on every saveConfig() call
+let _configCache: AppConfig | null = null
+
 // Get configuration
 export function getConfig(): AppConfig {
+  if (_configCache) return _configCache
+
   const configPath = getConfigPath()
   const isDev = !app.isPackaged || process.env.NODE_ENV === 'development'
 
@@ -860,7 +1002,7 @@ export function getConfig(): AppConfig {
     console.log('[Config] Normalized aiSources.current:', aiSources.current)
     console.log('[Config] Normalized aiSources.custom exists:', !!aiSources.custom)
     // Deep merge to ensure all nested defaults are applied
-    return {
+    const result: AppConfig = {
       ...DEFAULT_CONFIG,
       ...parsed,
       api: { ...DEFAULT_CONFIG.api, ...parsed.api },
@@ -884,13 +1026,14 @@ export function getConfig(): AppConfig {
         const userMcpServers = parsed.mcpServers || DEFAULT_CONFIG.mcpServers
         for (const [name, userConfig] of Object.entries(userMcpServers)) {
           if (mcpServers[name] && (mcpServers[name] as any).__builtIn) {
-            // For built-in servers, only merge user-configurable fields
-            // Do NOT override command and args (they should always be dynamically resolved)
-            const { command, args, __builtIn, ...userConfigFields } = userConfig as any
+            // For built-in servers, merge user-configurable fields
+            // Allow user to override args (for custom parameters like --user-data-dir)
+            // But preserve command and env (they should always be dynamically resolved)
+            const { command, __builtIn, env, ...userConfigFields } = userConfig as any
             mcpServers[name] = {
               ...mcpServers[name],
               ...userConfigFields,
-              // Preserve __builtIn flag and dynamically resolved command/args
+              // Preserve __builtIn flag and dynamically resolved command/env
               __builtIn: true
             }
           } else {
@@ -936,42 +1079,13 @@ export function getConfig(): AppConfig {
           }
         }
 
-        // Finally, scan ~/.claude/skills/ and merge any skills not already present
-        try {
-          const claudeSkillsDir = join(homedir(), '.claude', 'skills')
-          if (existsSync(claudeSkillsDir)) {
-            const entries = readdirSync(claudeSkillsDir, { withFileTypes: true })
-            for (const entry of entries) {
-              if (!entry.isDirectory()) continue
-              const skillName = entry.name
-              // Don't override skills already defined (built-in or user config)
-              if (skills[skillName]) continue
-              const skillDir = join(claudeSkillsDir, skillName)
-              const skillMdPath = join(skillDir, 'SKILL.md')
-              let description = ''
-              if (existsSync(skillMdPath)) {
-                const content = readFileSync(skillMdPath, 'utf-8')
-                const match = content.match(/^description:\s*(.+)$/m)
-                if (match) description = match[1].trim()
-              }
-              skills[skillName] = {
-                name: skillName,
-                path: skillDir,
-                type: 'directory',
-                description,
-                __builtIn: false
-              } as any
-            }
-          }
-        } catch (e) {
-          console.warn('[Config] Failed to scan ~/.claude/skills:', e)
-        }
-
         return skills
       })(),
       // analytics: keep as-is (managed by analytics.service.ts)
       analytics: parsed.analytics
     }
+    _configCache = result
+    return result
   } catch (error) {
     console.error('Failed to read config:', error)
     return DEFAULT_CONFIG
@@ -1016,9 +1130,14 @@ export function saveConfig(config: Partial<AppConfig>): AppConfig {
   if ((config as any).gitBash !== undefined) {
     (newConfig as any).gitBash = (config as any).gitBash
   }
+  // feishu: replace entirely when provided
+  if ((config as any).feishu !== undefined) {
+    (newConfig as any).feishu = (config as any).feishu
+  }
 
   const configPath = getConfigPath()
   writeFileSync(configPath, JSON.stringify(newConfig, null, 2))
+  _configCache = null  // Invalidate cache after write
 
   // Detect API config changes and notify subscribers
   // This allows agent.service to invalidate sessions when API config changes
@@ -1037,6 +1156,7 @@ export function saveConfig(config: Partial<AppConfig>): AppConfig {
         config.api.apiUrl !== currentConfig.api.apiUrl)
 
     if ((apiChanged || aiSourcesChanged || skillsChanged || mcpChanged) && apiConfigChangeHandlers.length > 0) {
+      const changeInfo: ConfigChangeInfo = { apiChanged, aiSourcesChanged, skillsChanged, mcpChanged }
       const changes = [
         apiChanged && 'API',
         aiSourcesChanged && 'AI Sources',
@@ -1049,7 +1169,7 @@ export function saveConfig(config: Partial<AppConfig>): AppConfig {
       setTimeout(() => {
         apiConfigChangeHandlers.forEach(handler => {
           try {
-            handler()
+            handler(changeInfo)
           } catch (e) {
             console.error('[Config] Error in config change handler:', e)
           }

@@ -8,7 +8,8 @@
  * - Cached data: tree state is preserved across re-renders
  */
 
-import { useState, useCallback, useEffect, useMemo, createContext, useContext, useRef } from 'react'
+import { useState, useCallback, useEffect, useMemo, createContext, useContext, useRef, Component } from 'react'
+import type { ReactNode, ErrorInfo } from 'react'
 import { Tree, NodeRendererProps, NodeApi } from 'react-arborist'
 import { api } from '../../api'
 import { useCanvasStore } from '../../stores/canvas.store'
@@ -55,6 +56,7 @@ function isDimmed(name: string): boolean {
 
 interface ArtifactTreeProps {
   spaceId: string
+  refreshKey?: number
 }
 
 // Fixed offsets for tree height calculation (in pixels)
@@ -109,13 +111,71 @@ function transformToArboristData(nodes: ArtifactTreeNode[]): TreeNodeData[] {
   }))
 }
 
-export function ArtifactTree({ spaceId }: ArtifactTreeProps) {
+// Error Boundary to catch react-arborist DnD backend conflicts
+// When switching from Tree→Card→Tree, the HTML5 backend singleton may not be cleaned up
+// This boundary catches the error and shows a fallback UI instead of crashing
+interface ErrorBoundaryProps {
+  children: ReactNode
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean
+  errorMessage: string | null
+}
+
+class TreeErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props)
+    this.state = { hasError: false, errorMessage: null }
+  }
+
+  static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
+    // Check if this is the DnD backend conflict error
+    if (error.message?.includes('Cannot have two HTML5 backends')) {
+      console.warn('[TreeErrorBoundary] Caught DnD backend conflict')
+      return { hasError: true, errorMessage: error.message }
+    }
+    // Re-throw other errors
+    throw error
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('[TreeErrorBoundary] Error caught:', error, errorInfo)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      // Show error message with manual retry button
+      return (
+        <div className="flex flex-col items-center justify-center h-full text-center px-4">
+          <div className="text-xs text-muted-foreground mb-2">
+            Tree view temporarily unavailable
+          </div>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-3 py-1.5 text-xs bg-primary/10 hover:bg-primary/20 text-primary rounded transition-colors"
+          >
+            Reload page
+          </button>
+        </div>
+      )
+    }
+
+    return this.props.children
+  }
+}
+
+function ArtifactTreeInner({ spaceId, refreshKey }: ArtifactTreeProps) {
   const { t } = useTranslation()
   const [treeData, setTreeData] = useState<TreeNodeData[]>([])
   const [loadingPaths, setLoadingPaths] = useState<Set<string>>(new Set())
   const isGenerating = useIsGenerating()
   const treeHeight = useTreeHeight()
   const watcherInitialized = useRef(false)
+
+  // Ref for tree container - used to scope DnD backend to avoid global singleton conflicts
+  const treeContainerRef = useRef<HTMLDivElement>(null)
+  const [containerReady, setContainerReady] = useState(false)
 
   // Subscribe to openFile once at parent level, pass down via context
   // This prevents each TreeNodeComponent from subscribing to the store
@@ -259,6 +319,13 @@ export function ArtifactTree({ spaceId }: ArtifactTreeProps) {
     loadTree()
   }, [loadTree])
 
+  // Refresh when external refreshKey changes (e.g., after drag-drop copy)
+  useEffect(() => {
+    if (refreshKey !== undefined && refreshKey > 0) {
+      loadTree()
+    }
+  }, [refreshKey, loadTree])
+
   // Refresh when generation completes (debounced)
   useEffect(() => {
     if (!isGenerating) {
@@ -287,31 +354,40 @@ export function ArtifactTree({ spaceId }: ArtifactTreeProps) {
   return (
     <OpenFileContext.Provider value={openFile}>
       <LazyLoadContext.Provider value={lazyLoadValue}>
-        <div className="flex flex-col h-full">
-          {/* Header */}
-          <div className="flex-shrink-0 bg-card px-2 py-1.5 border-b border-border/50 text-[10px] text-muted-foreground/80 [.light_&]:text-muted-foreground uppercase tracking-wider">
-            {t('Files')}
-          </div>
-
-          {/* Tree - uses window height based calculation */}
-          <div className="flex-1 overflow-hidden">
-            <Tree
-              data={treeData}
-              openByDefault={false}
-              width="100%"
-              height={treeHeight}
-              indent={16}
-              rowHeight={26}
-              overscanCount={5}
-              paddingTop={4}
-              paddingBottom={4}
-              disableDrag
-              disableDrop
-              disableEdit
-            >
-              {TreeNodeComponent}
-            </Tree>
-          </div>
+        {/* Container div is the dndRootElement - scopes HTML5Backend to this DOM subtree
+            so it gets cleaned up when Tree unmounts, avoiding global singleton conflicts */}
+        <div
+          ref={(el) => {
+            (treeContainerRef as React.MutableRefObject<HTMLDivElement | null>).current = el
+            if (el && !containerReady) setContainerReady(true)
+          }}
+          className="flex flex-col h-full"
+          onDragOver={(e) => e.stopPropagation()}
+          onDragLeave={(e) => e.stopPropagation()}
+          onDrop={(e) => e.stopPropagation()}
+        >
+          {/* Only render Tree after container ref is ready, so dndRootElement is never null */}
+          {containerReady && treeContainerRef.current && (
+            <div className="flex-1 overflow-hidden">
+              <Tree
+                data={treeData}
+                openByDefault={false}
+                width="100%"
+                height={treeHeight}
+                indent={16}
+                rowHeight={26}
+                overscanCount={5}
+                paddingTop={4}
+                paddingBottom={4}
+                disableDrag
+                disableDrop
+                disableEdit
+                dndRootElement={treeContainerRef.current}
+              >
+                {TreeNodeComponent}
+              </Tree>
+            </div>
+          )}
         </div>
       </LazyLoadContext.Provider>
     </OpenFileContext.Provider>
@@ -475,5 +551,14 @@ function TreeNodeComponent({ node, style, dragHandle }: NodeRendererProps<TreeNo
         ) : null
       )}
     </div>
+  )
+}
+
+// Public export: wraps inner tree with error boundary to handle DnD backend conflicts
+export function ArtifactTree({ spaceId, refreshKey }: ArtifactTreeProps) {
+  return (
+    <TreeErrorBoundary>
+      <ArtifactTreeInner spaceId={spaceId} refreshKey={refreshKey} />
+    </TreeErrorBoundary>
   )
 }

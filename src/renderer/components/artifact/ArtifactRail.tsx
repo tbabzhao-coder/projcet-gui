@@ -22,8 +22,9 @@ import { ONBOARDING_ARTIFACT_NAME } from '../onboarding/onboardingData'
 import { useTranslation } from '../../i18n'
 import { useIsMobile } from '../../hooks/useIsMobile'
 
-// Check if running in web mode
-const isWebMode = api.isRemoteMode()
+// Check if running in web mode (use function to ensure runtime check)
+const isWebMode = () => api.isRemoteMode()
+const isElectron = () => !isWebMode()
 
 // Storage keys
 const VIEW_MODE_STORAGE_KEY = 'project4:artifact-view-mode'
@@ -110,15 +111,69 @@ export function ArtifactRail({
   const { isActive: isOnboarding, currentStep, completeOnboarding } = useOnboardingStore()
   const isMobile = useIsMobile()
 
+  // Drag-and-drop state
+  const [isDropTarget, setIsDropTarget] = useState(false)
+  const [copyJob, setCopyJob] = useState<{
+    jobId: string
+    copied: number
+    total: number
+    currentFile: string
+  } | null>(null)
+  const [dropError, setDropError] = useState<string | null>(null)
+  const [recentlyCopied, setRecentlyCopied] = useState(false) // Prevent view switch right after copy
+  const [treeRefreshKey, setTreeRefreshKey] = useState(0) // Increment to trigger tree refresh
+
   // Canvas lifecycle for opening browser
   const { openUrl } = useCanvasLifecycle()
 
   // When Canvas is open, disable transition to prevent layout flicker during resize/close
   const isCanvasOpen = useCanvasStore(state => state.isOpen)
 
+  // Load artifacts from the main process
+  const loadArtifacts = useCallback(async () => {
+    if (!spaceId) return
+
+    try {
+      setIsLoading(true)
+      const response = await api.listArtifacts(spaceId)
+      if (response.success && response.data) {
+        setArtifacts(response.data as Artifact[])
+      }
+    } catch (error) {
+      console.error('[ArtifactRail] Failed to load artifacts:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [spaceId])
+
+  // Subscribe to copy progress events
+  useEffect(() => {
+    const unsubProgress = api.onCopyProgress((data) => {
+      setCopyJob(prev => prev?.jobId === data.jobId
+        ? { ...prev, copied: data.copied, total: data.total, currentFile: data.currentFile }
+        : prev
+      )
+    })
+    const unsubDone = api.onCopyDone((data) => {
+      setCopyJob(prev => prev?.jobId === data.jobId ? null : prev)
+      if (data.type === 'error') {
+        setDropError(data.message || 'Copy failed')
+        setTimeout(() => setDropError(null), 3000)
+      } else {
+        // Refresh file list after successful copy
+        loadArtifacts()
+        // Trigger tree refresh by incrementing key
+        setTreeRefreshKey(prev => prev + 1)
+      }
+      // Block view switching for 800ms after copy completes to let browser DnD state settle
+      setRecentlyCopied(true)
+      setTimeout(() => setRecentlyCopied(false), 800)
+    })
+    return () => { unsubProgress(); unsubDone() }
+  }, [loadArtifacts])
+
   // Handle expand/collapse toggle
   const handleToggleExpanded = useCallback(() => {
-    console.log('[ArtifactRail] 🔴 Click! isExpanded:', isExpanded, 'time:', Date.now())
     const newExpanded = !isExpanded
 
     // UI-first optimization: When Canvas is open, directly update DOM
@@ -126,7 +181,6 @@ export function ArtifactRail({
     if (isCanvasOpen && railRef.current) {
       const targetWidth = newExpanded ? width : COLLAPSED_WIDTH
       railRef.current.style.width = `${targetWidth}px`
-      console.log('[ArtifactRail] 🚀 Direct DOM update:', targetWidth, 'time:', Date.now())
     }
 
     // Then update React state (will re-render but width is already correct)
@@ -136,11 +190,6 @@ export function ArtifactRail({
       setInternalExpanded(newExpanded)
     }
   }, [isExpanded, isControlled, onExpandedChange, isCanvasOpen, width])
-
-  // Debug: log when isExpanded changes
-  useEffect(() => {
-    console.log('[ArtifactRail] 🟢 isExpanded changed to:', isExpanded, 'time:', Date.now())
-  }, [isExpanded])
 
   // Check if we're in onboarding view-artifact step
   const isOnboardingViewStep = isOnboarding && currentStep === 'view-artifact'
@@ -202,23 +251,6 @@ export function ArtifactRail({
       setMobileOverlayOpen(false)
     }
   }, [isMobile, mobileOverlayOpen])
-
-  // Load artifacts from the main process
-  const loadArtifacts = useCallback(async () => {
-    if (!spaceId) return
-
-    try {
-      setIsLoading(true)
-      const response = await api.listArtifacts(spaceId)
-      if (response.success && response.data) {
-        setArtifacts(response.data as Artifact[])
-      }
-    } catch (error) {
-      console.error('[ArtifactRail] Failed to load artifacts:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [spaceId])
 
   // Load artifacts on mount and when space changes
   useEffect(() => {
@@ -305,11 +337,87 @@ export function ArtifactRail({
     }
   }, [openUrl, isControlled, onExpandedChange])
 
+  // Get space root directory for drop target
+  const getSpaceRootDir = useCallback(async () => {
+    try {
+      const response = await api.getSpace(spaceId)
+      if (response.success && response.data) {
+        return (response.data as { path: string }).path
+      }
+    } catch (error) {
+      console.error('[ArtifactRail] Failed to get space path:', error)
+    }
+    return null
+  }, [spaceId])
+
+  // Handle drag-and-drop events
+  const handleRailDragOver = useCallback((e: React.DragEvent) => {
+    // Web mode doesn't support file path access
+    if (!isElectron()) return
+
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDropTarget(true)
+  }, [])
+
+  const handleRailDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDropTarget(false)
+  }, [])
+
+  const handleRailDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDropTarget(false)
+
+    // Web mode not supported
+    if (!isElectron()) return
+
+    // Use webUtils.getPathForFile to get real file paths (Electron v32+)
+    const files = Array.from(e.dataTransfer.files)
+    const filePaths = files
+      .map(f => api.getPathForFile(f))
+      .filter(Boolean) as string[]
+
+    if (filePaths.length === 0) return
+
+    // Identify target directory: hover on folder → that folder, otherwise → space root
+    const targetEl = (e.target as HTMLElement).closest('[data-folder-path]')
+    const targetDir = targetEl?.getAttribute('data-folder-path') ?? await getSpaceRootDir()
+    if (!targetDir) {
+      setDropError('Failed to determine target directory')
+      setTimeout(() => setDropError(null), 3000)
+      return
+    }
+
+    // Check file count for large folder confirmation
+    const FILE_LIMIT = 500
+    const countRes = await api.countFiles(filePaths)
+    if (countRes.success && countRes.data && countRes.data.total > FILE_LIMIT) {
+      const confirmed = window.confirm(
+        `此操作将复制 ${countRes.data.total} 个文件，可能需要一些时间。是否继续？`
+      )
+      if (!confirmed) return
+    }
+
+    // Start async copy with worker thread
+    const jobId = `copy-${Date.now()}`
+    setCopyJob({ jobId, copied: 0, total: countRes.data?.total ?? 1, currentFile: '' })
+
+    const res = await api.copyFilesToSpace(filePaths, targetDir, jobId)
+    if (!res.success) {
+      setCopyJob(null)
+      setDropError(res.error || 'Copy failed')
+      setTimeout(() => setDropError(null), 3000)
+    }
+  }, [getSpaceRootDir])
+
   // Shared content renderer
   const renderContent = () => (
     <div className="flex-1 overflow-hidden">
       {viewMode === 'tree' ? (
-        <ArtifactTree spaceId={spaceId} />
+        <ArtifactTree spaceId={spaceId} refreshKey={treeRefreshKey} />
       ) : (
         <div className="h-full overflow-auto p-2">
           {isLoading ? (
@@ -363,12 +471,38 @@ export function ArtifactRail({
   // flex-shrink-0 ensures footer doesn't compress, allowing content to take remaining space
   const renderFooter = () => (
     <div className="flex-shrink-0 p-2 border-t border-border">
+      {/* Copy progress bar */}
+      {copyJob && (
+        <div className="mb-2 p-2 bg-secondary/80 rounded text-xs space-y-1">
+          <div className="flex justify-between text-muted-foreground">
+            <span>{t('Copying...')}</span>
+            <span>{copyJob.copied}/{copyJob.total}</span>
+          </div>
+          <div className="w-full bg-secondary rounded-full h-1">
+            <div
+              className="bg-primary h-1 rounded-full transition-all duration-150"
+              style={{ width: `${Math.round((copyJob.copied / Math.max(copyJob.total, 1)) * 100)}%` }}
+            />
+          </div>
+          {copyJob.currentFile && (
+            <div className="text-muted-foreground truncate">{copyJob.currentFile}</div>
+          )}
+        </div>
+      )}
+
+      {/* Error message */}
+      {dropError && (
+        <div className="mb-2 px-2 py-1 text-xs text-destructive bg-destructive/10 rounded">
+          {dropError}
+        </div>
+      )}
+
       {viewMode === 'card' && artifacts.length > 0 && (
         <p className="text-xs text-muted-foreground text-center mb-2">
           {artifacts.length} {t('artifacts')}
         </p>
       )}
-      {isWebMode ? (
+      {isWebMode() ? (
         <div className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs text-muted-foreground/50 rounded-lg cursor-not-allowed">
           <Monitor className="w-4 h-4" />
           <span>{t('Please open folder in client')}</span>
@@ -384,15 +518,6 @@ export function ArtifactRail({
             <FolderOpen className="w-4 h-4 text-amber-500" />
             <span>{t('Folder')}</span>
           </button>
-          {/* Open browser button - DISABLED */}
-          {/* <button
-            onClick={handleOpenBrowser}
-            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-xs text-muted-foreground hover:bg-secondary hover:text-foreground rounded-lg transition-colors"
-            title={t('Open browser (⌘⇧B)')}
-          >
-            <Globe className="w-4 h-4 text-blue-500" />
-            <span>{t('Browser')}</span>
-          </button> */}
         </div>
       )}
     </div>
@@ -492,12 +617,17 @@ export function ArtifactRail({
   return (
     <div
       ref={railRef}
-      className="h-full flex-shrink-0 bg-card/20 backdrop-blur-xl flex flex-col relative"
+      className={`h-full flex-shrink-0 bg-card/20 backdrop-blur-xl flex flex-col relative ${
+        isDropTarget ? 'ring-2 ring-inset ring-primary/40 bg-primary/5' : ''
+      }`}
       style={{
         width: displayWidth,
         // Disable transition when: dragging OR Canvas is open (prevent layout flicker)
         transition: (isDragging || isCanvasOpen) ? 'none' : 'width 0.2s ease'
       }}
+      onDragOver={isExpanded ? handleRailDragOver : undefined}
+      onDragLeave={isExpanded ? handleRailDragLeave : undefined}
+      onDrop={isExpanded ? handleRailDrop : undefined}
     >
       {/* Drag handle - only show when expanded, subtle Apple style */}
       {isExpanded && (
@@ -517,12 +647,18 @@ export function ArtifactRail({
             <span className="text-sm font-semibold text-foreground/80">{t('Artifacts')}</span>
             <button
               onClick={toggleViewMode}
+              disabled={!!copyJob || isDropTarget || recentlyCopied}
               className={`
                 p-1 rounded-lg transition-all duration-200
                 hover:bg-secondary/60
                 ${viewMode === 'tree' ? 'bg-secondary/80 text-primary' : 'text-muted-foreground/50 hover:text-muted-foreground'}
+                ${(copyJob || isDropTarget || recentlyCopied) ? 'opacity-50 cursor-not-allowed' : ''}
               `}
-              title={viewMode === 'card' ? t('Switch to tree view (developer)') : t('Switch to card view')}
+              title={
+                (copyJob || recentlyCopied) ? t('Cannot switch view while copying') :
+                isDropTarget ? t('Cannot switch view while dragging') :
+                viewMode === 'card' ? t('Switch to tree view (developer)') : t('Switch to card view')
+              }
             >
               {viewMode === 'card' ? (
                 <FolderTree className="w-3.5 h-3.5" />
@@ -549,7 +685,7 @@ export function ArtifactRail({
       {/* Collapsed state - show both folder and browser icons */}
       {!isExpanded && (
         <div className="flex-1 flex flex-col items-center py-4 gap-2">
-          {isWebMode ? (
+          {isWebMode() ? (
             <div
               className="p-2 rounded-lg cursor-not-allowed opacity-50"
               title={t('Please open folder in client')}

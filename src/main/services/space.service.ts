@@ -10,7 +10,7 @@
 import { shell } from 'electron'
 import { join, basename } from 'path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync, rmSync } from 'fs'
-import { getProject4Dir, getTempSpacePath, getSpacesDir } from './config.service'
+import { getProject4Dir, getTempSpacePath, getFeishuSpacePath, getSpacesDir, getConfig } from './config.service'
 import { v4 as uuidv4 } from 'uuid'
 
 // Re-export config helper for backward compatibility with existing imports
@@ -38,6 +38,7 @@ interface Space {
     conversationCount: number
   }
   preferences?: SpacePreferences
+  tags?: string[]
 }
 
 // Layout preferences for a space
@@ -58,6 +59,7 @@ interface SpaceMeta {
   createdAt: string
   updatedAt: string
   preferences?: SpacePreferences
+  tags?: string[]
 }
 
 // Space index for tracking custom path spaces
@@ -114,12 +116,29 @@ const PROJECT4_TEMP_SPACE: Space = {
   }
 }
 
+const FEISHU_SPACE: Space = {
+  id: 'feishu',
+  name: '飞书',
+  icon: 'message-circle',
+  path: '',
+  isTemp: true,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  stats: {
+    artifactCount: 0,
+    conversationCount: 0
+  }
+}
+
 // Get all valid space paths (for security checks)
 export function getAllSpacePaths(): string[] {
   const paths: string[] = []
 
   // Add temp space path
   paths.push(getTempSpacePath())
+
+  // Add feishu space path
+  paths.push(getFeishuSpacePath())
 
   // Add default spaces directory
   const spacesDir = getSpacesDir()
@@ -275,6 +294,53 @@ export function getTempSpace(): Space {
   }
 }
 
+// Get Feishu space (only if configured)
+export function getFeishuSpace(): Space | null {
+  // Check if feishu is configured and enabled
+  const config = getConfig()
+
+  if (!config.feishu?.enabled || !config.feishu?.appId || !config.feishu?.appSecret) {
+    return null
+  }
+
+  const feishuPath = getFeishuSpacePath()
+
+  // Create feishu directories on-demand if they don't exist
+  if (!existsSync(feishuPath)) {
+    mkdirSync(feishuPath, { recursive: true })
+  }
+  const artifactsDir = join(feishuPath, 'artifacts')
+  const conversationsDir = join(feishuPath, 'conversations')
+  if (!existsSync(artifactsDir)) {
+    mkdirSync(artifactsDir, { recursive: true })
+  }
+  if (!existsSync(conversationsDir)) {
+    mkdirSync(conversationsDir, { recursive: true })
+  }
+
+  const stats = getSpaceStats(feishuPath)
+
+  // Load preferences if they exist
+  const metaPath = join(feishuPath, '.project4', 'meta.json')
+  let preferences: SpacePreferences | undefined
+
+  if (existsSync(metaPath)) {
+    try {
+      const meta: SpaceMeta = JSON.parse(readFileSync(metaPath, 'utf-8'))
+      preferences = meta.preferences
+    } catch {
+      // Ignore parse errors
+    }
+  }
+
+  return {
+    ...FEISHU_SPACE,
+    path: feishuPath,
+    stats,
+    preferences
+  }
+}
+
 // Helper to load a space from a path
 function loadSpaceFromPath(spacePath: string): Space | null {
   const metaPath = join(spacePath, '.project4', 'meta.json')
@@ -293,7 +359,8 @@ function loadSpaceFromPath(spacePath: string): Space | null {
         createdAt: meta.createdAt,
         updatedAt: meta.updatedAt,
         stats,
-        preferences: meta.preferences
+        preferences: meta.preferences,
+        tags: meta.tags
       }
     } catch (error) {
       console.error(`Failed to read space meta for ${spacePath}:`, error)
@@ -341,7 +408,7 @@ export function listSpaces(): Space[] {
 }
 
 // Create a new space
-export function createSpace(input: { name: string; icon: string; customPath?: string }): Space {
+export function createSpace(input: { name: string; icon: string; customPath?: string; tags?: string[] }): Space {
   const id = uuidv4()
   const now = new Date().toISOString()
   const isCustomPath = !!input.customPath
@@ -365,7 +432,8 @@ export function createSpace(input: { name: string; icon: string; customPath?: st
     name: input.name,
     icon: input.icon,
     createdAt: now,
-    updatedAt: now
+    updatedAt: now,
+    tags: input.tags
   }
 
   writeFileSync(join(spacePath, '.project4', 'meta.json'), JSON.stringify(meta, null, 2))
@@ -386,7 +454,8 @@ export function createSpace(input: { name: string; icon: string; customPath?: st
     stats: {
       artifactCount: 0,
       conversationCount: 0
-    }
+    },
+    tags: input.tags
   }
 }
 
@@ -428,6 +497,10 @@ export function getSpace(spaceId: string): Space | null {
     return getTempSpace()
   }
 
+  if (spaceId === 'feishu') {
+    return getFeishuSpace()
+  }
+
   const spaces = listSpaces()
   return spaces.find(s => s.id === spaceId) || null
 }
@@ -454,7 +527,7 @@ export function openSpaceFolder(spaceId: string): boolean {
 }
 
 // Update space metadata
-export function updateSpace(spaceId: string, updates: { name?: string; icon?: string }): Space | null {
+export function updateSpace(spaceId: string, updates: { name?: string; icon?: string; tags?: string[] }): Space | null {
   const space = getSpace(spaceId)
 
   if (!space || space.isTemp) {
@@ -468,6 +541,7 @@ export function updateSpace(spaceId: string, updates: { name?: string; icon?: st
 
     if (updates.name) meta.name = updates.name
     if (updates.icon) meta.icon = updates.icon
+    if (updates.tags !== undefined) meta.tags = updates.tags
     meta.updatedAt = new Date().toISOString()
 
     writeFileSync(metaPath, JSON.stringify(meta, null, 2))

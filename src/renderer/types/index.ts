@@ -184,9 +184,34 @@ export interface AppConfig {
   appearance: AppearanceConfig;
   system: SystemConfig;
   remoteAccess: RemoteAccessConfig;
+  // Agent configuration
+  agent?: {
+    maxTurns: number;  // Maximum tool call turns per message (default: 50)
+  };
   mcpServers: McpServersConfig;  // MCP servers configuration
   skills?: SkillsConfig;  // Skills configuration (compatible with Claude Code CLI format)
   isFirstLaunch: boolean;
+  // Feishu/Lark integration
+  feishu?: FeishuConfig;
+}
+
+// ============================================
+// Feishu Integration Types
+// ============================================
+
+export interface FeishuConfig {
+  enabled: boolean;
+  appId: string;
+  appSecret: string;
+  domain: 'feishu' | 'lark';
+}
+
+export type FeishuConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+
+export interface FeishuStatus {
+  status: FeishuConnectionStatus;
+  error?: string;
+  config?: FeishuConfig | null;
 }
 
 // ============================================
@@ -219,12 +244,14 @@ export interface Space {
   updatedAt: string;
   stats: SpaceStats;
   preferences?: SpacePreferences;  // User preferences for this space
+  tags?: string[];
 }
 
 export interface CreateSpaceInput {
   name: string;
   icon: string;
   customPath?: string;
+  tags?: string[];
 }
 
 // ============================================
@@ -241,6 +268,7 @@ export interface ConversationMeta {
   updatedAt: string;
   messageCount: number;
   preview?: string;  // Last message preview (truncated)
+  pinned?: boolean;
 }
 
 // Full conversation with messages

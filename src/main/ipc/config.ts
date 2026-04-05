@@ -6,6 +6,7 @@ import { ipcMain } from 'electron'
 import { getConfig, saveConfig, validateApiConnection } from '../services/config.service'
 import { getAISourceManager } from '../services/ai-sources'
 import { decryptString } from '../services/secure-storage.service'
+import { getRouterInfo } from '../openai-compat-router'
 
 export function registerConfigHandlers(): void {
   // Get configuration
@@ -141,6 +142,56 @@ export function registerConfigHandlers(): void {
     } catch (error: unknown) {
       const err = error as Error
       return { success: false, error: err.message, data: [] }
+    }
+  })
+
+  // Get local router base URL (for renderer to post debug logs to Network panel)
+  ipcMain.handle('config:get-router-url', () => {
+    const info = getRouterInfo()
+    return info ? info.baseUrl : null
+  })
+
+  // Add skill to config (for APA builder)
+  ipcMain.handle('config:add-skill', async (_event, skillConfig: {
+    name: string
+    path: string
+    type: 'directory' | 'file'
+    description?: string
+    disabled?: boolean
+    hasScripts?: boolean
+  }) => {
+    try {
+      const config = getConfig() as Record<string, any>
+      const currentSkills = config.skills || {}
+
+      // Filter out built-in skills — only persist user-defined skills
+      const userSkills: Record<string, any> = {}
+      for (const [name, skill] of Object.entries(currentSkills)) {
+        if (!(skill as any).__builtIn) {
+          userSkills[name] = skill
+        }
+      }
+
+      // Add the new skill
+      userSkills[skillConfig.name] = {
+        name: skillConfig.name,
+        path: skillConfig.path,
+        type: skillConfig.type,
+        description: skillConfig.description || '',
+        disabled: skillConfig.disabled || false,
+        hasScripts: skillConfig.hasScripts || false,
+        importedAt: new Date().toISOString(),
+      }
+
+      // Only save the skills field, not the entire config
+      saveConfig({ skills: userSkills } as any)
+      console.log(`[Config IPC] Added skill: ${skillConfig.name}`)
+
+      return { success: true, data: userSkills[skillConfig.name] }
+    } catch (error: unknown) {
+      const err = error as Error
+      console.error('[Config IPC] Add skill error:', err)
+      return { success: false, error: err.message }
     }
   })
 }

@@ -9,6 +9,7 @@ import type { Space, CreateSpaceInput, SpacePreferences } from '../types'
 interface SpaceState {
   // Spaces data
   project4Space: Space | null
+  feishuSpace: Space | null
   spaces: Space[]
   currentSpace: Space | null
 
@@ -19,9 +20,10 @@ interface SpaceState {
   // Actions
   loadSpaces: () => Promise<void>
   loadProject4Space: () => Promise<void>
+  loadFeishuSpace: () => Promise<void>
   setCurrentSpace: (space: Space | null) => void
   createSpace: (input: CreateSpaceInput) => Promise<Space | null>
-  updateSpace: (spaceId: string, updates: { name?: string; icon?: string }) => Promise<Space | null>
+  updateSpace: (spaceId: string, updates: { name?: string; icon?: string; tags?: string[] }) => Promise<Space | null>
   deleteSpace: (spaceId: string) => Promise<boolean>
   openSpaceFolder: (spaceId: string) => Promise<void>
   refreshCurrentSpace: () => Promise<void>
@@ -34,6 +36,7 @@ interface SpaceState {
 export const useSpaceStore = create<SpaceState>((set, get) => ({
   // Initial state
   project4Space: null,
+  feishuSpace: null,
   spaces: [],
   currentSpace: null,
   isLoading: false,
@@ -43,7 +46,6 @@ export const useSpaceStore = create<SpaceState>((set, get) => ({
   loadProject4Space: async () => {
     try {
       const response = await api.getTempSpace()
-
       if (response.success && response.data) {
         set({ project4Space: response.data as Space })
       }
@@ -52,13 +54,28 @@ export const useSpaceStore = create<SpaceState>((set, get) => ({
     }
   },
 
+  // Load Feishu space (only available when configured)
+  loadFeishuSpace: async () => {
+    try {
+      const response = await api.getFeishuSpace()
+      if (response.success) {
+        set({ feishuSpace: (response.data as Space) || null })
+      }
+    } catch (error) {
+      console.error('Failed to load Feishu space:', error)
+    }
+  },
+
   // Load all spaces
   loadSpaces: async () => {
     try {
       set({ isLoading: true, error: null })
 
-      // Load both Project4 space and user spaces
-      await get().loadProject4Space()
+      // Load both Project4 space, Feishu space and user spaces
+      await Promise.all([
+        get().loadProject4Space(),
+        get().loadFeishuSpace()
+      ])
 
       const response = await api.listSpaces()
 

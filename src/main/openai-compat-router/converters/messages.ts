@@ -64,8 +64,7 @@ export function convertAnthropicSystemToOpenAIChat(
     // If all blocks are plain text, return as content parts
     const contentParts = textBlocks.map((block) => ({
       type: 'text' as const,
-      text: block.text,
-      ...(block.cache_control ? { cache_control: block.cache_control } : {})
+      text: block.text
     }))
 
     return { role: 'system', content: contentParts }
@@ -126,11 +125,6 @@ export function convertAnthropicMessagesToOpenAIChat(
           role: 'tool',
           content,
           tool_call_id: toolResult.tool_use_id
-        }
-
-        // Preserve cache_control if present
-        if (toolResult.cache_control) {
-          (toolMessage as any).cache_control = toolResult.cache_control
         }
 
         result.push(toolMessage)

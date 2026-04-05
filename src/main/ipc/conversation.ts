@@ -10,8 +10,10 @@ import {
   updateConversation,
   deleteConversation,
   addMessage,
-  updateLastMessage
+  updateLastMessage,
+  getMessageThoughts
 } from '../services/conversation.service'
+import { closeV2Session } from '../services/agent'
 
 export function registerConversationHandlers(): void {
   // List conversations for a space
@@ -65,6 +67,12 @@ export function registerConversationHandlers(): void {
   ipcMain.handle('conversation:delete', async (_event, spaceId: string, conversationId: string) => {
     try {
       const result = deleteConversation(spaceId, conversationId)
+
+      // Clean up V2 Session to prevent memory leak and context accumulation
+      // When a conversation is deleted, its associated session should be closed immediately
+      closeV2Session(conversationId)
+      console.log(`[Conversation] Deleted conversation and closed V2 session: ${conversationId}`)
+
       return { success: true, data: result }
     } catch (error: unknown) {
       const err = error as Error
@@ -103,6 +111,20 @@ export function registerConversationHandlers(): void {
       try {
         const message = updateLastMessage(spaceId, conversationId, updates)
         return { success: true, data: message }
+      } catch (error: unknown) {
+        const err = error as Error
+        return { success: false, error: err.message }
+      }
+    }
+  )
+
+  // Get thoughts for a specific message
+  ipcMain.handle(
+    'conversation:get-message-thoughts',
+    async (_event, spaceId: string, conversationId: string, messageId: string) => {
+      try {
+        const thoughts = getMessageThoughts(spaceId, conversationId, messageId)
+        return { success: true, data: thoughts }
       } catch (error: unknown) {
         const err = error as Error
         return { success: false, error: err.message }

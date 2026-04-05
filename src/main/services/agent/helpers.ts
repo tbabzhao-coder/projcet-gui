@@ -15,6 +15,7 @@ import { getSpace } from '../space.service'
 import { getAISourceManager } from '../ai-sources'
 import { broadcastToAll, broadcastToWebSocket } from '../../http/websocket'
 import { onMainWindowChange } from '../window.service'
+import { onAgentEvent as onFeishuAgentEvent } from '../feishu.service'
 import type { ApiCredentials, MainWindowRef } from './types'
 
 // ============================================
@@ -337,6 +338,26 @@ export function buildSystemPromptAppend(workDir: string, modelInfo?: string): st
 You are Project4, an AI assistant that helps users accomplish real work.
 ${modelLine}
 All created files will be saved in the user's workspace. Current workspace: ${workDir}.
+
+IMPORTANT: Unless the user explicitly requests otherwise (e.g., "reply in English", "use English"), always respond in Chinese (Simplified Chinese). This applies to:
+- Explanations and descriptions
+- Error messages and warnings
+- Code comments (unless the codebase uses English comments)
+- Documentation and summaries
+
+However, keep the following in English:
+- Code itself (variable names, function names, etc.)
+- Technical terms that are commonly used in English (e.g., API, HTTP, JSON)
+- File paths and command-line commands
+- Log messages in code
+
+<context_management>
+Context window is limited. To avoid exceeding it:
+- NEVER read entire large files (>500 lines). Use Grep to search for specific content, or Read with line range (offset + limit).
+- When exploring a codebase, use Glob and Grep first to find relevant files, then read only the relevant sections.
+- Keep tool outputs focused: use specific search patterns instead of broad matches.
+- If you need to process a large file, work on it in sections rather than loading it all at once.
+</context_management>
 `
 }
 
@@ -397,6 +418,13 @@ export function sendToRenderer(
   } catch (error) {
     // WebSocket module might not be initialized yet, ignore
   }
+
+  // 3. Forward to Feishu service for feishu-prefixed conversations
+  try {
+    onFeishuAgentEvent(channel, conversationId, eventData)
+  } catch (error) {
+    // Feishu module might not be initialized yet, ignore
+  }
 }
 
 /**
@@ -420,6 +448,19 @@ export function broadcastToAllClients(channel: string, data: Record<string, unkn
 // Skills Management
 // ============================================
 
+// Dirty flag: only true when skills config actually changes.
+// Avoids per-message overhead of hash calculation + existsSync syscalls.
+let _skillsSyncDirty = true  // true on startup so first sync runs
+let _lastSyncedSkillsHash: string | null = null
+
+/**
+ * Mark skills as needing re-sync. Called by config change handler
+ * when skills config is modified (import/delete/enable/disable).
+ */
+export function markSkillsDirty(): void {
+  _skillsSyncDirty = true
+}
+
 /**
  * Sync all enabled skills to the isolated claude-config/skills/ directory.
  * CLI discovers skills from CLAUDE_CONFIG_DIR/skills/ when settingSources includes 'user'.
@@ -429,8 +470,23 @@ export function broadcastToAllClients(channel: string, data: Record<string, unkn
  * without relying on the original import path.
  *
  * IMPORTANT: SDK requires skill file to be named SKILL.md (uppercase)
+ *
+ * Performance: Caches sync result to avoid redundant file operations on Windows.
+ * On Windows, cpSync/rmSync are 5-10x slower than macOS, causing UI freezes during warm-up.
  */
 export function syncSkillsToConfigDir(skills: Record<string, any>): void {
+  // Fast path: if nothing changed since last sync, skip entirely (no syscalls).
+  if (!_skillsSyncDirty) {
+    return
+  }
+
+  // Double-check with hash (handles edge case where dirty was set but config is actually the same)
+  const currentHash = calculateSkillsHash(skills)
+  if (_lastSyncedSkillsHash === currentHash) {
+    _skillsSyncDirty = false
+    return
+  }
+
   const configSkillsDir = join(getClaudeConfigDir(), 'skills')
 
   // Create skills directory if it doesn't exist
@@ -444,6 +500,8 @@ export function syncSkillsToConfigDir(skills: Record<string, any>): void {
   )
 
   if (enabledSkills.length === 0) {
+    _skillsSyncDirty = false
+    _lastSyncedSkillsHash = currentHash
     return
   }
 
@@ -457,8 +515,10 @@ export function syncSkillsToConfigDir(skills: Record<string, any>): void {
     const targetPath = join(configSkillsDir, name)
 
     try {
-      // For built-in skills, skip if already synced (they don't change unless app is updated)
-      if (config.__builtIn && existsSync(targetPath)) {
+      // For built-in skills in production, skip if already synced (they don't change unless app is updated)
+      // In development, always re-sync so SKILL.md edits take effect immediately
+      const isDev = !process.env.NODE_ENV || process.env.NODE_ENV === 'development'
+      if (config.__builtIn && existsSync(targetPath) && !isDev) {
         console.log(`[Agent] ✓ Built-in skill "${name}" already exists, skipping`)
         continue
       }
@@ -498,6 +558,10 @@ export function syncSkillsToConfigDir(skills: Record<string, any>): void {
       console.error(`[Agent] ✗ Failed to sync skill ${name}:`, error)
     }
   }
+
+  // Update cache and clear dirty flag after successful sync
+  _lastSyncedSkillsHash = currentHash
+  _skillsSyncDirty = false
 
   console.log(`[Agent] Skills sync complete. CLI will load from: ${configSkillsDir}`)
   console.log(`[Agent] ========================================`)

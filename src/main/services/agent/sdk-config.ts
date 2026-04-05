@@ -10,7 +10,7 @@ import { join } from 'path'
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'fs'
 import { getClaudeConfigDir } from '../config.service'
 import { ensureOpenAICompatRouter, encodeBackendConfig } from '../../openai-compat-router'
-import { buildEnvWithBundledNode } from '../node-runtime.service'
+import { buildEnvWithBundledNode, getBundledPlaywrightBrowsersPath } from '../node-runtime.service'
 import { buildEnvWithBundledPython } from '../python-runtime.service'
 import type { ApiCredentials } from './types'
 import { inferOpenAIWireApi } from './helpers'
@@ -64,6 +64,8 @@ export interface BaseSdkOptionsParams {
   stderrHandler?: (data: string) => void
   /** Optional MCP servers configuration */
   mcpServers?: Record<string, any> | null
+  /** Maximum tool call turns per message (from config, default 50) */
+  maxTurns?: number
 }
 
 // ============================================
@@ -98,12 +100,20 @@ const SANDBOX_CONFIG = {
  * to $TMPDIR and chokidar watching the entire tmpdir (which crashes on
  * macOS due to Unix socket files like CloudClient).
  */
+let _lastSettingsHash: string | null = null
+
 export function ensureClaudeConfigSettings(apiKey: string, baseUrl: string): void {
   const configDir = getClaudeConfigDir()
 
   // Create claude-config directory if it doesn't exist
   if (!existsSync(configDir)) {
     mkdirSync(configDir, { recursive: true })
+  }
+
+  // Skip write if nothing changed
+  const currentHash = `${apiKey}|${baseUrl}`
+  if (_lastSettingsHash === currentHash && existsSync(join(configDir, 'settings.json'))) {
+    return
   }
 
   const settingsFile = join(configDir, 'settings.json')
@@ -129,6 +139,7 @@ export function ensureClaudeConfigSettings(apiKey: string, baseUrl: string): voi
   settings.sandbox = SANDBOX_CONFIG
 
   writeFileSync(settingsFile, JSON.stringify(settings, null, 2))
+  _lastSettingsHash = currentHash
   console.log(`[SDK Config] ========================================`)
   console.log(`[SDK Config] Claude config settings.json updated:`)
   console.log(`[SDK Config]   File: ${settingsFile}`)
@@ -257,6 +268,11 @@ export function buildSdkEnv(params: SdkEnvParams): Record<string, string | numbe
     // Project4's own config dir (avoid conflicts with CC's ~/.claude)
     CLAUDE_CONFIG_DIR: getClaudeConfigDir(),
 
+    // Windows: Git Bash path for CLI subprocess (stripped by CLAUDE_ prefix filter above, must re-add explicitly)
+    ...(process.env.CLAUDE_CODE_GIT_BASH_PATH
+      ? { CLAUDE_CODE_GIT_BASH_PATH: process.env.CLAUDE_CODE_GIT_BASH_PATH }
+      : {}),
+
     // Localhost bypasses proxy (for OpenAI compat router)
     NO_PROXY: 'localhost,127.0.0.1',
     no_proxy: 'localhost,127.0.0.1',
@@ -264,7 +280,12 @@ export function buildSdkEnv(params: SdkEnvParams): Record<string, string | numbe
     // Disable non-essential traffic
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
     DISABLE_TELEMETRY: '1',
-    DISABLE_COST_WARNINGS: '1'
+    DISABLE_COST_WARNINGS: '1',
+
+    // Playwright: use bundled browsers if available
+    ...(getBundledPlaywrightBrowsersPath()
+      ? { PLAYWRIGHT_BROWSERS_PATH: getBundledPlaywrightBrowsersPath() }
+      : {})
   }
 
   return env as Record<string, string | number>
@@ -292,7 +313,8 @@ export function buildBaseSdkOptions(params: BaseSdkOptionsParams): Record<string
     conversationId,
     abortController,
     stderrHandler,
-    mcpServers
+    mcpServers,
+    maxTurns
   } = params
 
   console.log(`[SDK Config] buildBaseSdkOptions: workDir="${workDir}", spaceId="${spaceId}"`)
@@ -323,7 +345,7 @@ export function buildBaseSdkOptions(params: BaseSdkOptionsParams): Record<string
       preset: 'claude_code' as const,
       append: buildSystemPromptAppend(workDir, credentials.displayModel)
     },
-    maxTurns: 50,
+    maxTurns: maxTurns ?? 50,
     allowedTools: ['Read', 'Write', 'Edit', 'Grep', 'Glob', 'Bash', 'Skill', 'AskUserQuestion'],
     // Disable WebSearch and WebFetch tools
     disallowedTools: ['WebSearch', 'WebFetch'],

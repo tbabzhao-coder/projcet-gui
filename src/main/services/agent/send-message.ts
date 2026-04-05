@@ -37,7 +37,6 @@ import {
   inferOpenAIWireApi,
   sendToRenderer,
   setMainWindow,
-  syncSkillsToConfigDir,
   calculateSkillsHash,
   calculateCredentialsHash
 } from './helpers'
@@ -102,14 +101,18 @@ export async function sendMessage(
 
   // Get API credentials based on current aiSources configuration
   const credentials = await getApiCredentials(config)
-  console.log(`[Agent] ========================================`)
-  // Log API configuration (simplified)
-  console.log(`[Agent] 🔑 Sending message with:`)
-  console.log(`[Agent]    Provider: ${credentials.provider}`)
-  console.log(`[Agent]    Model: ${credentials.model}`)
-  console.log(`[Agent]    Key: ${credentials.apiKey.substring(0, 15)}...${credentials.apiKey.substring(credentials.apiKey.length - 6)}`)
-  console.log(`[Agent]    URL: ${credentials.baseUrl}`)
-  console.log(`[Agent] ========================================`)
+  console.log(`[Agent] provider=${credentials.provider} model=${credentials.model} key=${credentials.apiKey.substring(0, 8)}...`)
+
+  // Push session start info to renderer DevTools
+  sendToRenderer('debug:api-log', spaceId, conversationId, {
+    type: 'session-start',
+    provider: credentials.provider,
+    model: credentials.model,
+    baseUrl: credentials.baseUrl,
+    aiBrowserEnabled: !!aiBrowserEnabled,
+    thinkingEnabled: !!thinkingEnabled,
+    maxTurns: config.agent?.maxTurns ?? 50
+  })
 
   // Resolve credentials for SDK (handles OpenAI compat router for non-Anthropic providers)
   const resolvedCredentials = await resolveCredentialsForSdk(credentials)
@@ -174,7 +177,8 @@ export async function sendMessage(
         console.error(`[Agent][${conversationId}] CLI stderr:`, data)
         stderrBuffer += data  // Accumulate for error reporting
       },
-      mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : null
+      mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : null,
+      maxTurns: config.agent?.maxTurns
     })
 
     // Apply dynamic configurations (AI Browser system prompt, Thinking mode)
@@ -197,15 +201,6 @@ export async function sendMessage(
     const mcpServerNames = enabledMcpServers ? Object.keys(enabledMcpServers) : []
     if (mcpServerNames.length > 0) {
       console.log(`[Agent][${conversationId}] MCP servers configured: ${mcpServerNames.join(', ')}`)
-    }
-
-    // Sync skills to claude-config/skills/ directory before creating session
-    // CLI loads skills from CLAUDE_CONFIG_DIR/skills/
-    if (config.skills && Object.keys(config.skills).length > 0) {
-      console.log(`[Agent][${conversationId}] Skills configured:`, Object.keys(config.skills).join(', '))
-      syncSkillsToConfigDir(config.skills)
-    } else {
-      console.log(`[Agent][${conversationId}] No skills configured`)
     }
 
     // Session config for rebuild detection (credentialsHash: rebuild when API key/URL changes)
@@ -292,7 +287,33 @@ export async function sendMessage(
       }
     }
 
-    if (stderrBuffer && !errorMessage.includes('Command execution')) {
+    // Check for context window overflow errors
+    // Covers Anthropic native errors + OpenAI-format provider errors (doubao, deepseek, etc.)
+    const isContextOverflow = errorMessage.includes('input length must be in range') ||
+                              errorMessage.includes('202752') ||
+                              errorMessage.includes('prompt is too long') ||
+                              (errorMessage.includes('context') && errorMessage.includes('overflow')) ||
+                              (errorMessage.includes('max') && errorMessage.includes('token')) ||
+                              errorMessage.includes('context_length_exceeded') ||
+                              errorMessage.includes('maximum context length') ||
+                              errorMessage.includes('Request too large') ||
+                              errorMessage.includes('input is too long') ||
+                              (errorMessage.includes('tokens') && errorMessage.includes('exceed')) ||
+                              stderrBuffer?.includes('input length must be in range') ||
+                              stderrBuffer?.includes('prompt is too long') ||
+                              stderrBuffer?.includes('context_length_exceeded') ||
+                              stderrBuffer?.includes('maximum context length')
+
+    if (isContextOverflow) {
+      errorMessage = 'Context window exceeded. The conversation has accumulated too much context.\n\n' +
+                    'This usually happens when AI reads large files or makes many tool calls in a long conversation.\n\n' +
+                    'Solutions:\n' +
+                    '1. Start a new conversation — you can reference the same task, AI will re-read needed files\n' +
+                    '2. Retry — the system will auto-compress context and try again\n' +
+                    '3. Avoid reading entire large files — ask AI to search for specific content instead'
+      console.log(`[Agent][${conversationId}] Context overflow detected, closing session`)
+      closeV2Session(conversationId)
+    } else if (stderrBuffer && !errorMessage.includes('Command execution')) {
       // Try to extract the most useful error info from stderr
       const mcpErrorMatch = stderrBuffer.match(/Error: Invalid MCP configuration:[\s\S]*?(?=\n\s*at |$)/m)
       const genericErrorMatch = stderrBuffer.match(/Error: [\s\S]*?(?=\n\s*at |$)/m)
@@ -572,7 +593,7 @@ async function processMessageStream(
             })
 
             // Update session state thought
-            const thought = sessionState.thoughts.find(t => t.id === blockState.thoughtId)
+            const thought = sessionState.thoughts.find((t: Thought) => t.id === blockState.thoughtId)
             if (thought) {
               thought.content = blockState.content
               thought.isStreaming = false
@@ -605,7 +626,7 @@ async function processMessageStream(
             })
 
             // Update session state thought
-            const thought = sessionState.thoughts.find(t => t.id === blockState.thoughtId)
+            const thought = sessionState.thoughts.find((t: Thought) => t.id === blockState.thoughtId)
             if (thought) {
               thought.toolInput = toolInput
               thought.isStreaming = false
@@ -639,8 +660,13 @@ async function processMessageStream(
             isComplete: false,
             isStreaming: false
           })
-          // Update lastTextContent for final result
-          lastTextContent = currentStreamingText
+          // Update lastTextContent for final result (guard against empty string overwrite)
+          if (currentStreamingText) {
+            lastTextContent = currentStreamingText
+            console.log(`[Agent][${conversationId}] ✅ lastTextContent updated (stream), length: ${lastTextContent.length}, preview: "${lastTextContent.substring(0, 80)}..."`)
+          } else {
+            console.warn(`[Agent][${conversationId}] ⚠️ Text block completed but currentStreamingText is EMPTY, lastTextContent preserved: "${lastTextContent.substring(0, 80)}..."`)
+          }
           console.log(`[Agent][${conversationId}] Text block completed, length: ${currentStreamingText.length}`)
         }
       }
@@ -687,7 +713,7 @@ async function processMessageStream(
           }
 
           // Update backend session state
-          const toolUseThought = sessionState.thoughts.find(t => t.id === toolUseThoughtId)
+          const toolUseThought = sessionState.thoughts.find((t: Thought) => t.id === toolUseThoughtId)
           if (toolUseThought) {
             toolUseThought.toolResult = toolResult
           }
@@ -734,7 +760,13 @@ async function processMessageStream(
           // Keep only the latest text block (overwritten by each new text block)
           // This becomes the final reply when generation completes
           // Intermediate texts stay in the thought process area only
-          lastTextContent = thought.content
+          // Guard against empty string overwrite (scenario 3: SDK parses text thought with empty content)
+          if (thought.content) {
+            lastTextContent = thought.content
+            console.log(`[Agent][${conversationId}] ✅ lastTextContent updated (thought), length: ${lastTextContent.length}, preview: "${lastTextContent.substring(0, 80)}..."`)
+          } else {
+            console.warn(`[Agent][${conversationId}] ⚠️ Text thought has EMPTY content, lastTextContent preserved: "${lastTextContent.substring(0, 80)}..."`)
+          }
 
           // Send streaming update - frontend shows this during generation
           sendToRenderer('agent:message', spaceId, conversationId, {
@@ -831,6 +863,15 @@ async function processMessageStream(
     console.log(`[Agent][${conversationId}] Session ID saved:`, capturedSessionId)
   }
 
+  // === FINAL STATE DIAGNOSTIC ===
+  console.log(`[Agent][${conversationId}] 📊 Stream ended. Final state:`, {
+    lastTextContent: lastTextContent ? `"${lastTextContent.substring(0, 100)}..." (len=${lastTextContent.length})` : 'EMPTY',
+    currentStreamingText: currentStreamingText ? `"${currentStreamingText.substring(0, 100)}..." (len=${currentStreamingText.length})` : 'EMPTY',
+    isStreamingTextBlock,
+    thoughtsCount: sessionState.thoughts.length,
+    thoughtTypes: sessionState.thoughts.reduce((acc: Record<string, number>, t: Thought) => { acc[t.type] = (acc[t.type] || 0) + 1; return acc }, {} as Record<string, number>)
+  })
+
   // Ensure complete event is sent even if no result message was received
   if (lastTextContent) {
     console.log(`[Agent][${conversationId}] Sending final complete event with last text`)
@@ -853,18 +894,47 @@ async function processMessageStream(
 
     const fallbackContent = currentStreamingText || ''
     const hasThoughts = sessionState.thoughts.length > 0
+
+    // Diagnostic logging: analyze thought types to distinguish normal vs anomalous scenarios
+    const thoughtTypes = sessionState.thoughts.reduce((acc: Record<string, number>, t: Thought) => {
+      acc[t.type] = (acc[t.type] || 0) + 1
+      return acc
+    }, {} as Record<string, number>)
+    const hasToolUse = sessionState.thoughts.some((t: Thought) => t.type === 'tool_use')
+    const hasTextThought = sessionState.thoughts.some((t: Thought) => t.type === 'text')
+
+    console.log(`[Agent][${conversationId}] Fallback path diagnostics:`, {
+      currentStreamingText: currentStreamingText ? `"${currentStreamingText.substring(0, 50)}..." (len=${currentStreamingText.length})` : 'empty',
+      isStreamingTextBlock,
+      thoughtTypes,
+      totalThoughts: sessionState.thoughts.length
+    })
+
+    // Anomaly detection: text thought exists but lastTextContent is empty
+    if (hasTextThought && !lastTextContent) {
+      console.warn(`[Agent][${conversationId}] BUG: text thoughts exist but lastTextContent is empty - text was lost`)
+    }
+
     // When no text but we have thoughts (tool-only completion), use placeholder so bubble isn't empty
     const PLACEHOLDER_TOOLS_ONLY = 'Task completed using tools.'
     const contentToSave = fallbackContent || (hasThoughts ? PLACEHOLDER_TOOLS_ONLY : '')
 
     if (contentToSave || hasThoughts) {
       if (contentToSave && !fallbackContent) {
-        console.log(`[Agent][${conversationId}] Using placeholder for tool-only completion, thoughts: ${sessionState.thoughts.length}`)
+        if (hasToolUse && !hasTextThought) {
+          // Normal scenario: pure tool completion
+          console.log(`[Agent][${conversationId}] Using placeholder for tool-only completion, thoughts: ${sessionState.thoughts.length}`)
+        } else {
+          // Anomalous scenario: has text thoughts but no text content
+          console.warn(`[Agent][${conversationId}] Using placeholder but text thoughts exist - possible text loss`)
+        }
       }
+      console.log(`[Agent][${conversationId}] Saving content: "${contentToSave.substring(0, 50)}..." (len=${contentToSave.length})`)
       updateLastMessage(spaceId, conversationId, {
         content: contentToSave,
         thoughts: hasThoughts ? [...sessionState.thoughts] : undefined,
-        tokenUsage: tokenUsage || undefined
+        tokenUsage: tokenUsage || undefined,
+        timestamp: new Date().toISOString()
       })
       // Notify frontend so bubble shows placeholder immediately (avoids empty bubble before reload)
       if (contentToSave) {

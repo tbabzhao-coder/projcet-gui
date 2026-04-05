@@ -275,16 +275,18 @@ export function InputArea({ onSend, onStop, isGenerating, placeholder, isCompact
 
     if (hasContent && !isGenerating) {
       // Transform /skillname [args] or /mcpname [args] into explicit instructions
+      // Only transform if the name matches a known skill or MCP server
       const slashMatch = textToSend.match(/^\/(\S+)(?:\s+([\s\S]*))?$/)
       if (slashMatch) {
         const name = slashMatch[1]
         const args = slashMatch[2] || ''
+        const isKnownSkill = skills?.some(s => s.key === name)
         const isMcpServer = mcpServers?.some(m => m.key === name)
         if (isMcpServer) {
           textToSend = args
             ? `Please use the ${name} MCP server. ${args}`
             : `Please use the ${name} MCP server.`
-        } else {
+        } else if (isKnownSkill) {
           textToSend = args
             ? `Please use the ${name} skill. ${args}`
             : `Please use the ${name} skill.`

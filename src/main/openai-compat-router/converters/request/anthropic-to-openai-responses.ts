@@ -43,7 +43,8 @@ export function convertAnthropicToOpenAIResponses(anthropicRequest: AnthropicReq
   const request: OpenAIResponsesRequest = {
     model: anthropicRequest.model,
     input: inputItems,
-    stream: anthropicRequest.stream
+    stream: anthropicRequest.stream,
+    ...(anthropicRequest.stream ? { stream_options: { include_usage: true } } : {})
   }
 
   // Add tools if present

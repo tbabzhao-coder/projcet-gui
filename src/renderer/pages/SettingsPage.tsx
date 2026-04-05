@@ -29,6 +29,7 @@ import { CheckCircle2, XCircle, ArrowLeft, Eye, EyeOff } from '../components/ico
 import { Header } from '../components/layout/Header'
 import { McpServerList } from '../components/settings/McpServerList'
 import { SkillList } from '../components/settings/SkillList'
+import { FeishuSettings } from '../components/settings/FeishuSettings'
 import { useTranslation, getCurrentLanguage } from '../i18n'
 import { Loader2, LogOut, Plus, Check, Globe, Key, MessageSquare, type LucideIcon, RefreshCw, ChevronDown, Edit2, Trash2 } from 'lucide-react'
 
@@ -144,6 +145,9 @@ export function SettingsPage() {
 
   // System settings state
   const [autoLaunch, setAutoLaunch] = useState(config?.system?.autoLaunch || false)
+
+  // Agent settings state
+  const [maxTurns, setMaxTurns] = useState<number>(config?.agent?.maxTurns ?? 50)
 
   // API Key visibility state
   const [showApiKey, setShowApiKey] = useState(false)
@@ -356,6 +360,14 @@ export function SettingsPage() {
       console.error('[Settings] Failed to set auto launch:', error)
       setAutoLaunch(!enabled) // Revert on error
     }
+  }
+
+  // Handle maxTurns change
+  const handleMaxTurnsChange = async (value: number) => {
+    const clamped = Math.max(1, Math.min(999, value))
+    setMaxTurns(clamped)
+    await api.setConfig({ agent: { maxTurns: clamped } } as any)
+    setConfig({ ...config, agent: { maxTurns: clamped } } as AppConfig)
   }
 
   // Handle MCP servers save
@@ -1211,6 +1223,35 @@ export function SettingsPage() {
             </section>
           )} */}
 
+          {/* Agent Section */}
+          <section className="bg-card rounded-xl border border-border p-6">
+            <h2 className="text-lg font-medium mb-4">{t('Agent')}</h2>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">{t('Max Turns')}</span>
+                  <span
+                    className="inline-flex items-center justify-center w-4 h-4 text-xs rounded-full bg-muted text-muted-foreground cursor-help"
+                    title={t('Maximum number of tool call turns per message. Increase for complex tasks, decrease to save cost.')}
+                  >
+                    ?
+                  </span>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {t('Maximum number of tool call turns per message (1–999)')}
+                </p>
+              </div>
+              <input
+                type="number"
+                min={1}
+                max={999}
+                value={maxTurns}
+                onChange={(e) => handleMaxTurnsChange(parseInt(e.target.value) || 50)}
+                className="w-20 px-3 py-1.5 text-sm rounded-lg border border-border bg-background text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+            </div>
+          </section>
+
           {/* MCP Servers Section */}
           <section className="bg-card rounded-xl border border-border p-6">
             <McpServerList
@@ -1253,6 +1294,17 @@ export function SettingsPage() {
                 ⚠️ {t('Configuration changes will take effect after starting a new conversation')}
               </p> */}
             </div>
+          </section>
+
+          {/* Feishu Integration Section */}
+          <section className="bg-card rounded-xl border border-border p-6">
+            <FeishuSettings
+              config={(config as any)?.feishu || null}
+              onSave={async (feishuConfig) => {
+                await api.setConfig({ feishu: feishuConfig } as any)
+                setConfig({ ...config, feishu: feishuConfig } as any)
+              }}
+            />
           </section>
 
           {/* Remote Access Section - DISABLED */}
@@ -1505,41 +1557,10 @@ export function SettingsPage() {
           </section>
           )} */}
 
-          {/* About Section - DISABLED */}
-          {/* <section className="bg-card rounded-xl border border-border p-6">
-            <h2 className="text-lg font-medium mb-4">{t('About')}</h2>
-
-            <div className="space-y-3 text-sm">
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">{t('Version')}</span>
-                <div className="flex items-center gap-3">
-                  <span>{appVersion || '-'}</span>
-                  <button
-                    onClick={handleCheckForUpdates}
-                    disabled={updateStatus.checking}
-                    className="text-xs text-primary hover:text-primary/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {updateStatus.checking ? (
-                      <span className="flex items-center gap-1">
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        {t('Checking...')}
-                      </span>
-                    ) : updateStatus.hasUpdate ? (
-                      <span className="text-emerald-500">{t('New version available')}: {updateStatus.version}</span>
-                    ) : updateStatus.upToDate ? (
-                      <span className="text-muted-foreground">{t('Already up to date')}</span>
-                    ) : (
-                      t('Check for updates')
-                    )}
-                  </button>
-                </div>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">{t('Build')}</span>
-                <span> Powered by Claude Code </span>
-              </div>
-            </div>
-          </section> */}
+          {/* About */}
+          <div className="text-center text-xs text-muted-foreground/50 py-4">
+            v{appVersion || '-'}
+          </div>
         </div>
       </main>
     </div>

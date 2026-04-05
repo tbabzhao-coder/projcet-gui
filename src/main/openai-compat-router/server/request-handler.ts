@@ -19,6 +19,15 @@ import {
 } from '../stream'
 import { getApiTypeFromUrl, isValidEndpointUrl, getEndpointUrlError, shouldForceStream } from './api-type'
 import { withRequestQueue, generateQueueKey } from './request-queue'
+import { BrowserWindow } from 'electron'
+
+// Push a debug log event to the renderer process DevTools console
+function pushToRenderer(type: string, data: Record<string, unknown>): void {
+  const win = BrowserWindow.getAllWindows()[0]
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('debug:api-log', { type, ...data, ts: Date.now() })
+  }
+}
 
 export interface RequestHandlerOptions {
   debug?: boolean
@@ -27,16 +36,74 @@ export interface RequestHandlerOptions {
 
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000 // 10 minutes
 
+// Anthropic error type -> HTTP status code
+const ERROR_STATUS_MAP: Record<string, number> = {
+  invalid_request_error: 400,
+  authentication_error: 401,
+  permission_error: 403,
+  not_found_error: 404,
+  request_too_large: 413,
+  rate_limit_error: 429,
+  api_error: 500,
+  overloaded_error: 529,
+  timeout_error: 504
+}
+
+// HTTP status code -> Anthropic error type
+const STATUS_ERROR_MAP: Record<number, string> = {
+  400: 'invalid_request_error',
+  401: 'authentication_error',
+  403: 'permission_error',
+  404: 'not_found_error',
+  413: 'request_too_large',
+  429: 'rate_limit_error',
+  500: 'api_error',
+  529: 'overloaded_error'
+}
+
 /**
- * Send error response in Anthropic format
+ * Map HTTP status code to Anthropic error type
+ */
+function getErrorTypeFromStatus(status: number): string {
+  return STATUS_ERROR_MAP[status] || 'api_error'
+}
+
+/**
+ * Extract error type and message from upstream response body.
+ * Tries to parse OpenAI/Anthropic JSON error format first, falls back to status-based mapping.
+ */
+function getUpstreamError(status: number, errorText: string): { type: string; message: string } {
+  try {
+    const json = JSON.parse(errorText)
+    // OpenAI format: { error: { type, message, code } }
+    if (json?.error?.type) {
+      return { type: json.error.type, message: json.error.message || '' }
+    }
+    // Some providers only have error.message without type
+    if (json?.error?.message) {
+      return { type: getErrorTypeFromStatus(status), message: json.error.message }
+    }
+  } catch {
+    // Not JSON, ignore
+  }
+  return {
+    type: getErrorTypeFromStatus(status),
+    message: errorText || `HTTP ${status}`
+  }
+}
+
+/**
+ * Send error response in Anthropic format.
+ * HTTP status is derived from errorType automatically.
  */
 function sendError(
   res: ExpressResponse,
-  statusCode: number,
   errorType: string,
   message: string
 ): void {
-  res.status(statusCode).json({
+  const status = ERROR_STATUS_MAP[errorType] || 500
+  console.log(`[RequestHandler] Sending error: HTTP ${status} ${errorType} - ${message.slice(0, 100)}`)
+  res.status(status).json({
     type: 'error',
     error: { type: errorType, message }
   })
@@ -58,14 +125,21 @@ async function fetchUpstream(
     controller.abort()
   }, timeoutMs)
 
-  // Log the actual HTTP request being sent
-  console.log(`[RequestHandler] ========================================`)
-  console.log(`[RequestHandler] Sending HTTP Request:`)
-  console.log(`[RequestHandler]   URL: ${targetUrl}`)
-  console.log(`[RequestHandler]   API Key (first 15 chars): ${apiKey.substring(0, 15)}...`)
-  console.log(`[RequestHandler]   API Key (last 4 chars): ...${apiKey.substring(apiKey.length - 4)}`)
-  console.log(`[RequestHandler] ========================================`)
+  const maskedKey = `${apiKey.substring(0, 8)}...${apiKey.substring(apiKey.length - 4)}`
+  const bodyStr = JSON.stringify(body)
 
+  console.log(`[RequestHandler] → POST ${targetUrl} (key: ${maskedKey})`)
+
+  // Push full request to renderer DevTools
+  pushToRenderer('request', {
+    method: 'POST',
+    url: targetUrl,
+    key: maskedKey,
+    body: body,
+    bodySize: bodyStr.length
+  })
+
+  const t0 = Date.now()
   try {
     const response = await fetch(targetUrl, {
       method: 'POST',
@@ -73,13 +147,27 @@ async function fetchUpstream(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`
       },
-      body: JSON.stringify(body),
+      body: bodyStr,
       signal: signal ?? controller.signal
     })
-    
-    console.log(`[RequestHandler] HTTP Response Status: ${response.status} ${response.statusText}`)
-    
+
+    const elapsed = Date.now() - t0
+    console.log(`[RequestHandler] ← ${response.status} ${response.statusText} (${elapsed}ms)`)
+
+    // Push response status to renderer DevTools
+    pushToRenderer('response', {
+      status: response.status,
+      statusText: response.statusText,
+      elapsed,
+      url: targetUrl
+    })
+
     return response
+  } catch (err: any) {
+    const elapsed = Date.now() - t0
+    console.error(`[RequestHandler] ✗ fetch failed (${elapsed}ms):`, err?.message)
+    pushToRenderer('error', { url: targetUrl, error: err?.message, elapsed })
+    throw err
   } finally {
     clearTimeout(timeout)
   }
@@ -97,90 +185,65 @@ export async function handleMessagesRequest(
   const { debug = false, timeoutMs = DEFAULT_TIMEOUT_MS } = options
   const { url: backendUrl, key: apiKey, model } = config
 
-  // Log actual API being called (for debugging)
-  console.log(`[OpenAICompatRouter] ========================================`)
-  console.log(`[OpenAICompatRouter] Actual API Request Details:`)
-  console.log(`[OpenAICompatRouter]   Target URL: ${backendUrl}`)
-  console.log(`[OpenAICompatRouter]   API Key (first 15 chars): ${apiKey.substring(0, 15)}...`)
-  console.log(`[OpenAICompatRouter]   Model: ${model || 'not specified'}`)
-  console.log(`[OpenAICompatRouter] ========================================`)
-
-  // Validate URL has valid endpoint suffix
+  // Validate URL
   if (!isValidEndpointUrl(backendUrl)) {
-    return sendError(res, 400, 'invalid_request_error', getEndpointUrlError(backendUrl))
+    return sendError(res, 'invalid_request_error', getEndpointUrlError(backendUrl))
   }
 
-  // Get API type from URL suffix (guaranteed non-null after validation)
   const apiType = getApiTypeFromUrl(backendUrl)!
 
-  // Override model if specified in config
   const originalModel = anthropicRequest.model
   if (model) {
     anthropicRequest.model = model
   }
   const finalModel = anthropicRequest.model
 
-  // Always log request details (not just in debug mode)
-  console.log(`[RequestHandler] Request details:`)
-  console.log(`[RequestHandler]   - Backend URL: ${backendUrl}`)
-  console.log(`[RequestHandler]   - API Type: ${apiType}`)
-  console.log(`[RequestHandler]   - Original Model: ${originalModel}`)
-  console.log(`[RequestHandler]   - Final Model: ${finalModel}`)
-  console.log(`[RequestHandler]   - API Key: ${apiKey.slice(0, 8)}...${apiKey.slice(-4)}`)
+  console.log(`[RequestHandler] ${apiType.toUpperCase()} | model=${finalModel} | url=${backendUrl}`)
 
-  if (debug) {
-    console.log('[RequestHandler] Full API Key:', apiKey)
-  }
-
-  // Use request queue to prevent concurrent requests
   const queueKey = generateQueueKey(backendUrl, apiKey)
 
   await withRequestQueue(queueKey, async () => {
     try {
-      // Determine stream mode
       const forceEnvStream = shouldForceStream()
       const preferStreamByWire = apiType === 'responses' && anthropicRequest.stream === undefined
-      let wantStream = forceEnvStream || preferStreamByWire || anthropicRequest.stream
+      let wantStream = !!(forceEnvStream || preferStreamByWire || anthropicRequest.stream)
 
-      // Convert request
       const requestToSend = { ...anthropicRequest, stream: wantStream }
       const openaiRequest = apiType === 'responses'
         ? convertAnthropicToOpenAIResponses(requestToSend).request
         : convertAnthropicToOpenAIChat(requestToSend).request
 
       const toolCount = (openaiRequest as any).tools?.length ?? 0
-      const requestModel = (openaiRequest as any).model || finalModel
-      console.log(`[RequestHandler] Sending request:`)
-      console.log(`[RequestHandler]   - Method: POST`)
-      console.log(`[RequestHandler]   - URL: ${backendUrl}`)
-      console.log(`[RequestHandler]   - Model: ${requestModel}`)
-      console.log(`[RequestHandler]   - Wire API: ${apiType}`)
-      console.log(`[RequestHandler]   - Tools: ${toolCount}`)
-      console.log(`[RequestHandler]   - Stream: ${wantStream ?? false}`)
+      const msgCount = (openaiRequest as any).messages?.length ?? 0
+      console.log(`[RequestHandler] → model=${finalModel} tools=${toolCount} msgs=${msgCount} stream=${wantStream ?? false}`)
 
-      // Make upstream request - URL is used directly, no modification
+      // Push full converted request body to renderer DevTools
+      pushToRenderer('outgoing-request', {
+        url: backendUrl,
+        apiType,
+        model: finalModel,
+        originalModel,
+        stream: wantStream ?? false,
+        toolCount,
+        msgCount,
+        body: debug ? openaiRequest : {
+          model: (openaiRequest as any).model,
+          messages: (openaiRequest as any).messages,
+          tools: toolCount > 0 ? `[${toolCount} tools]` : undefined,
+          stream: (openaiRequest as any).stream
+        }
+      })
+
       let upstreamResp = await fetchUpstream(backendUrl, apiKey, openaiRequest, timeoutMs)
-      console.log(`[RequestHandler] Response received:`)
-      console.log(`[RequestHandler]   - Status: ${upstreamResp.status} ${upstreamResp.statusText}`)
-      console.log(`[RequestHandler]   - Headers:`, Object.fromEntries(upstreamResp.headers.entries()))
 
-      // Handle errors
+      // Handle errors - extract upstream error type for correct Anthropic error mapping
       if (!upstreamResp.ok) {
         const errorText = await upstreamResp.text().catch(() => '')
+        const upstream = getUpstreamError(upstreamResp.status, errorText)
 
-        // Rate limit - return immediately
-        if (upstreamResp.status === 429) {
-          console.error(`[RequestHandler] Provider 429: ${errorText.slice(0, 200)}`)
-          return sendError(res, 429, 'rate_limit_error', `Provider error: ${errorText || 'HTTP 429'}`)
-        }
-
-        // Check if upstream requires stream=true
         const requiresStream = errorText?.toLowerCase().includes('stream must be set to true')
-
         if (requiresStream && !wantStream) {
           console.warn('[RequestHandler] Upstream requires stream=true, retrying...')
-
-          // Retry with stream enabled
           wantStream = true
           const retryRequest = apiType === 'responses'
             ? convertAnthropicToOpenAIResponses({ ...anthropicRequest, stream: true }).request
@@ -190,12 +253,15 @@ export async function handleMessagesRequest(
 
           if (!upstreamResp.ok) {
             const retryErrorText = await upstreamResp.text().catch(() => '')
+            const retryUpstream = getUpstreamError(upstreamResp.status, retryErrorText)
             console.error(`[RequestHandler] Provider error ${upstreamResp.status}: ${retryErrorText.slice(0, 200)}`)
-            return sendError(res, upstreamResp.status, 'api_error', `Provider error: ${retryErrorText || `HTTP ${upstreamResp.status}`}`)
+            pushToRenderer('api-error', { status: upstreamResp.status, error: retryErrorText.slice(0, 500) })
+            return sendError(res, retryUpstream.type, retryUpstream.message)
           }
         } else {
-          console.error(`[RequestHandler] Provider error ${upstreamResp.status}: ${errorText.slice(0, 200)}`)
-          return sendError(res, upstreamResp.status, 'api_error', `Provider error: ${errorText || `HTTP ${upstreamResp.status}`}`)
+          console.error(`[RequestHandler] Provider error ${upstreamResp.status} [${upstream.type}]: ${errorText.slice(0, 200)}`)
+          pushToRenderer('api-error', { status: upstreamResp.status, error: errorText.slice(0, 500) })
+          return sendError(res, upstream.type, upstream.message)
         }
       }
 
@@ -205,10 +271,20 @@ export async function handleMessagesRequest(
         res.setHeader('Cache-Control', 'no-cache')
         res.setHeader('Connection', 'keep-alive')
 
+        const onStreamComplete = (text: string, usage: { inputTokens: number; outputTokens: number }): void => {
+          pushToRenderer('response-body', {
+            url: backendUrl,
+            model: finalModel,
+            text: text.length > 500 ? text.slice(0, 500) + `… (+${text.length - 500} chars)` : text,
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens
+          })
+        }
+
         if (apiType === 'responses') {
-          await streamOpenAIResponsesToAnthropic(upstreamResp.body, res, anthropicRequest.model, debug)
+          await streamOpenAIResponsesToAnthropic(upstreamResp.body, res, anthropicRequest.model, debug, onStreamComplete)
         } else {
-          await streamOpenAIChatToAnthropic(upstreamResp.body, res, anthropicRequest.model, debug)
+          await streamOpenAIChatToAnthropic(upstreamResp.body, res, anthropicRequest.model, debug, onStreamComplete)
         }
         return
       }
@@ -224,11 +300,11 @@ export async function handleMessagesRequest(
       // Handle abort/timeout
       if (error?.name === 'AbortError') {
         console.error('[RequestHandler] AbortError (timeout or client disconnect)')
-        return sendError(res, 504, 'timeout_error', 'Request timed out')
+        return sendError(res, 'timeout_error', 'Request timed out')
       }
 
       console.error('[RequestHandler] Internal error:', error?.message || error)
-      return sendError(res, 500, 'internal_error', error?.message || 'Internal error')
+      return sendError(res, 'api_error', error?.message || 'Internal error')
     }
   })
 }

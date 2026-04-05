@@ -26,6 +26,7 @@ import { registerArtifactHandlers } from '../ipc/artifact'
 import { registerSystemHandlers } from '../ipc/system'
 import { registerAuthHandlers } from '../ipc/auth'
 import { registerBootstrapStatusHandler } from './state'
+import { registerGitBashHandlers, initializeGitBashOnStartup } from '../ipc/git-bash'
 
 /**
  * Initialize essential services required for first screen render
@@ -68,6 +69,22 @@ export function initializeEssentialServices(): void {
   // System: Window controls (maximize/minimize/close) are basic functionality
   registerSystemHandlers()
 
+  // GitBash: Windows Git Bash detection (required by renderer Store initialization)
+  // Must be registered before renderer loads, as Store checks Git Bash status on startup
+  registerGitBashHandlers()
+
   const duration = performance.now() - start
   console.log(`[Bootstrap] Essential services initialized in ${duration.toFixed(1)}ms`)
+
+  // Windows-specific: Initialize Git Bash in background (async, non-blocking)
+  // This runs after handlers are registered, so renderer can query status immediately
+  if (process.platform === 'win32') {
+    initializeGitBashOnStartup()
+      .then((status) => {
+        console.log('[Bootstrap] Git Bash status:', status)
+      })
+      .catch((err) => {
+        console.error('[Bootstrap] Git Bash initialization failed:', err)
+      })
+  }
 }

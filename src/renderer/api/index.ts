@@ -143,12 +143,26 @@ export const api = {
     return httpRequest('GET', '/api/config/mcp')
   },
 
+  getRouterUrl: async (): Promise<string | null> => {
+    if (isElectron()) {
+      return window.project4.getRouterUrl()
+    }
+    return null
+  },
+
   // ===== Space =====
   getTempSpace: async (): Promise<ApiResponse> => {
     if (isElectron()) {
       return window.project4.getTempSpace()
     }
     return httpRequest('GET', '/api/spaces/project4')
+  },
+
+  getFeishuSpace: async (): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.project4.getFeishuSpace()
+    }
+    return httpRequest('GET', '/api/spaces/feishu')
   },
 
   listSpaces: async (): Promise<ApiResponse> => {
@@ -162,6 +176,7 @@ export const api = {
     name: string
     icon: string
     customPath?: string
+    tags?: string[]
   }): Promise<ApiResponse> => {
     if (isElectron()) {
       return window.project4.createSpace(input)
@@ -217,7 +232,7 @@ export const api = {
 
   updateSpace: async (
     spaceId: string,
-    updates: { name?: string; icon?: string }
+    updates: { name?: string; icon?: string; tags?: string[] }
   ): Promise<ApiResponse> => {
     if (isElectron()) {
       return window.project4.updateSpace(spaceId, updates)
@@ -330,6 +345,17 @@ export const api = {
       `/api/spaces/${spaceId}/conversations/${conversationId}/messages/last`,
       updates
     )
+  },
+
+  getMessageThoughts: async (
+    spaceId: string,
+    conversationId: string,
+    messageId: string
+  ): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.project4.getMessageThoughts(spaceId, conversationId, messageId)
+    }
+    return httpRequest('GET', `/api/spaces/${spaceId}/conversations/${conversationId}/messages/${messageId}/thoughts`)
   },
 
   // ===== Agent =====
@@ -557,6 +583,51 @@ export const api = {
     return httpRequest('GET', `/api/artifacts/detect-type?path=${encodeURIComponent(filePath)}`)
   },
 
+  // Count files before copying (Electron only)
+  countFiles: async (files: string[]): Promise<ApiResponse<{ total: number }>> => {
+    if (isElectron()) {
+      return window.project4.countFiles(files)
+    }
+    return { success: false, error: 'Not supported in remote mode' }
+  },
+
+  // Copy files to space via worker thread (Electron only)
+  copyFilesToSpace: async (files: string[], targetDir: string, jobId: string): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.project4.copyFilesToSpace(files, targetDir, jobId)
+    }
+    return { success: false, error: 'Not supported in remote mode' }
+  },
+
+  // Get real file path from File object (Electron only, uses webUtils.getPathForFile)
+  getPathForFile: (file: File): string | null => {
+    if (isElectron()) {
+      try {
+        return window.project4.getPathForFile(file)
+      } catch (err) {
+        console.error('[API] getPathForFile error:', err)
+        return null
+      }
+    }
+    return null
+  },
+
+  // Subscribe to copy progress events
+  onCopyProgress: (cb: (data: { jobId: string; copied: number; total: number; currentFile: string }) => void) => {
+    if (isElectron()) {
+      return window.project4.onCopyProgress(cb)
+    }
+    return () => {}
+  },
+
+  // Subscribe to copy done events
+  onCopyDone: (cb: (data: { jobId: string; type: 'done' | 'error'; message?: string }) => void) => {
+    if (isElectron()) {
+      return window.project4.onCopyDone(cb)
+    }
+    return () => {}
+  },
+
   // ===== Onboarding =====
   writeOnboardingArtifact: async (
     spaceId: string,
@@ -717,6 +788,8 @@ export const api = {
     onEvent('agent:mcp-status', callback),
   onAgentCompact: (callback: (data: unknown) => void) =>
     onEvent('agent:compact', callback),
+  onDebugApiLog: (callback: (data: unknown) => void) =>
+    onEvent('debug:api-log', callback),
   onRemoteStatusChange: (callback: (data: unknown) => void) =>
     onEvent('remote:status-change', callback),
 
@@ -1104,6 +1177,136 @@ export const api = {
       return () => {}
     }
     return window.project4.onBootstrapExtendedReady(callback)
+  },
+
+  // ============================================
+  // Feishu Integration
+  // ============================================
+
+  feishuGetStatus: async () => {
+    if (!isElectron()) {
+      return { success: false, error: 'Feishu is only available in desktop mode' }
+    }
+    return window.project4.feishuGetStatus()
+  },
+
+  feishuSaveConfig: async (config: {
+    enabled: boolean
+    appId: string
+    appSecret: string
+    domain: 'feishu' | 'lark'
+  }) => {
+    if (!isElectron()) {
+      return { success: false, error: 'Feishu is only available in desktop mode' }
+    }
+    return window.project4.feishuSaveConfig(config)
+  },
+
+  feishuStop: async () => {
+    if (!isElectron()) {
+      return { success: false, error: 'Feishu is only available in desktop mode' }
+    }
+    return window.project4.feishuStop()
+  },
+
+  onFeishuStatusChange: (callback: (data: unknown) => void) => {
+    if (!isElectron()) {
+      return () => {}
+    }
+    return window.project4.onFeishuStatusChange(callback)
+  },
+
+  // ============================================
+  // APA (AI-Powered Automation)
+  // ============================================
+
+  apaStartRecording: async (options: { url?: string }): Promise<ApiResponse> => {
+    if (!isElectron()) {
+      return { success: false, error: 'APA is only available in desktop mode' }
+    }
+    return window.project4.apaStartRecording(options)
+  },
+
+  apaStopRecording: async (): Promise<ApiResponse> => {
+    if (!isElectron()) {
+      return { success: false, error: 'APA is only available in desktop mode' }
+    }
+    return window.project4.apaStopRecording()
+  },
+
+  apaExecuteSkill: async (options: { skillName: string; params: Record<string, string> }): Promise<ApiResponse> => {
+    if (!isElectron()) {
+      return { success: false, error: 'APA is only available in desktop mode' }
+    }
+    return window.project4.apaExecuteSkill(options)
+  },
+
+  apaStopExecution: async (): Promise<ApiResponse> => {
+    if (!isElectron()) {
+      return { success: false, error: 'APA is only available in desktop mode' }
+    }
+    return window.project4.apaStopExecution()
+  },
+
+  apaUpdateScript: async (skillName: string, newScript: string): Promise<ApiResponse> => {
+    if (!isElectron()) {
+      return { success: false, error: 'APA is only available in desktop mode' }
+    }
+    return window.project4.apaUpdateScript(skillName, newScript)
+  },
+
+  configAddSkill: async (skillConfig: {
+    name: string
+    path: string
+    type: 'directory' | 'file'
+    description?: string
+    disabled?: boolean
+    hasScripts?: boolean
+  }): Promise<ApiResponse> => {
+    if (!isElectron()) {
+      return { success: false, error: 'Only available in desktop mode' }
+    }
+    return window.project4.configAddSkill(skillConfig)
+  },
+
+  onApaRecordingStarted: (callback: (data: unknown) => void) => {
+    if (!isElectron()) return () => {}
+    return window.project4.onApaRecordingStarted(callback)
+  },
+
+  onApaRecordingLog: (callback: (data: unknown) => void) => {
+    if (!isElectron()) return () => {}
+    return window.project4.onApaRecordingLog(callback)
+  },
+
+  onApaRecordingStopped: (callback: (data: unknown) => void) => {
+    if (!isElectron()) return () => {}
+    return window.project4.onApaRecordingStopped(callback)
+  },
+
+  onApaExecutionStarted: (callback: (data: unknown) => void) => {
+    if (!isElectron()) return () => {}
+    return window.project4.onApaExecutionStarted(callback)
+  },
+
+  onApaExecutionLog: (callback: (data: unknown) => void) => {
+    if (!isElectron()) return () => {}
+    return window.project4.onApaExecutionLog(callback)
+  },
+
+  onApaExecutionComplete: (callback: (data: unknown) => void) => {
+    if (!isElectron()) return () => {}
+    return window.project4.onApaExecutionComplete(callback)
+  },
+
+  onApaExecutionFailed: (callback: (data: unknown) => void) => {
+    if (!isElectron()) return () => {}
+    return window.project4.onApaExecutionFailed(callback)
+  },
+
+  onApaExecutionStopped: (callback: (data: unknown) => void) => {
+    if (!isElectron()) return () => {}
+    return window.project4.onApaExecutionStopped(callback)
   },
 }
 

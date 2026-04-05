@@ -1,11 +1,28 @@
 {
   "name": "project4",
-  "version": "1.1.3",
+  "version": "1.1.8",
   "description": "AI-powered productivity assistant",
   "type": "module",
   "main": "./out/main/index.mjs",
   "author": "Project4 Team",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tbabzhao-coder/projcet-gui.git"
+  },
+  "homepage": "https://github.com/tbabzhao-coder/projcet-gui#readme",
+  "bugs": {
+    "url": "https://github.com/tbabzhao-coder/projcet-gui/issues"
+  },
+  "keywords": [
+    "ai",
+    "claude",
+    "productivity",
+    "assistant",
+    "electron",
+    "mcp",
+    "automation"
+  ],
   "scripts": {
     "dev": "cross-env PROJECT4_DATA_DIR=~/.project4-dev electron-vite dev",
     "build": "electron-vite build",
@@ -17,9 +34,9 @@
     "build:mac": "npm run build && electron-builder --mac",
     "build:win": "npm run build && electron-builder --win",
     "build:win-x64": "npm run build && electron-builder --win --x64",
-    "prepare:mac-arm64": "node scripts/prepare-cloudflared-mac-arm64.mjs && node scripts/prepare-python-mac-arm64.mjs && node scripts/prepare-node-mac-arm64.mjs",
+    "prepare:mac-arm64": "node scripts/prepare-cloudflared-mac-arm64.mjs && node scripts/prepare-python-mac-arm64.mjs && node scripts/prepare-node-mac-arm64.mjs && node scripts/prepare-playwright-mac-arm64.mjs",
     "prepare:mac-x64": "node scripts/prepare-cloudflared-mac-x64.mjs && node scripts/prepare-python-mac-x64.mjs && node scripts/prepare-node-mac-x64.mjs",
-    "prepare:win-x64": "node scripts/prepare-cloudflared-win-x64.mjs && node scripts/prepare-python-win-x64.mjs && node scripts/prepare-git-bash-win-x64.mjs && node scripts/prepare-node-win-x64.mjs",
+    "prepare:win-x64": "node scripts/prepare-cloudflared-win-x64.mjs && node scripts/prepare-python-win-x64.mjs && node scripts/prepare-git-bash-win-x64.mjs && node scripts/prepare-node-win-x64.mjs && node scripts/prepare-playwright-win-x64.mjs",
     "prepare:linux-x64": "node scripts/prepare-cloudflared-linux-x64.mjs",
     "build:mac-x64": "npm run build && electron-builder --mac --x64",
     "build:linux": "npm run build && electron-builder --linux",
@@ -71,11 +88,12 @@
     "@codemirror/view": "^6.39.11",
     "@electron-toolkit/preload": "^3.0.0",
     "@electron-toolkit/utils": "^3.0.0",
+    "@larksuiteoapi/node-sdk": "^1.59.0",
     "@lezer/highlight": "^1.2.3",
     "@modelcontextprotocol/server-filesystem": "^2026.1.14",
     "@modelcontextprotocol/server-memory": "^2026.1.26",
     "@parcel/watcher": "^2.5.6",
-    "@playwright/mcp": "^0.0.59",
+    "@playwright/mcp": "0.0.59",
     "@replit/codemirror-lang-svelte": "^6.0.0",
     "@tailwindcss/typography": "^0.5.19",
     "@types/diff": "^7.0.2",
@@ -90,6 +108,7 @@
     "i18next": "^25.7.4",
     "ignore": "^7.0.5",
     "lucide-react": "^0.555.0",
+    "pdf-tools-mcp": "^0.3.5",
     "qrcode": "^1.5.4",
     "quick-chart-mcp": "^1.0.14",
     "react": "^18.2.0",
@@ -103,13 +122,14 @@
     "rehype-raw": "^7.0.0",
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^2.2.0",
+    "tesseract.js": "^7.0.0",
     "uuid": "^13.0.0",
     "ws": "^8.18.3",
     "zod": "^3.24.1",
     "zustand": "^4.5.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.57.0",
+    "@playwright/test": "1.59.0-alpha-1769364499000",
     "@types/express": "^5.0.5",
     "@types/node": "^20.10.0",
     "@types/qrcode": "^1.5.6",
@@ -125,7 +145,7 @@
     "electron-vite": "^2.0.0",
     "i18next-parser": "^9.3.0",
     "patch-package": "^8.0.1",
-    "playwright": "^1.57.0",
+    "playwright": "1.59.0-alpha-1769364499000",
     "postcss": "^8.4.32",
     "sharp": "^0.34.5",
     "tailwindcss": "^3.4.0",
@@ -143,6 +163,11 @@
     "files": [
       "out/**/*",
       "resources/**/*",
+      "!resources/python-*",
+      "!resources/node-*",
+      "!resources/git-bash-*",
+      "!resources/playwright-browsers",
+      "!resources/mcp-servers",
       "product.json",
       "project4-local/dist/**/*"
     ],
@@ -243,6 +268,36 @@
         {
           "from": "node_modules/minimatch",
           "to": "mcp-servers/minimatch",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "resources/mcp-servers/image-ocr-mcp",
+          "to": "mcp-servers/image-ocr-mcp",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "node_modules/pdf-tools-mcp",
+          "to": "mcp-servers/pdf-tools-mcp",
+          "filter": [
+            "**/*",
+            "!**/.bin/**"
+          ]
+        },
+        {
+          "from": "node_modules/playwright",
+          "to": "mcp-servers/playwright",
+          "filter": [
+            "**/*",
+            "!**/.bin/**"
+          ]
+        },
+        {
+          "from": "resources/playwright-browsers",
+          "to": "playwright-browsers",
           "filter": [
             "**/*"
           ]
@@ -369,6 +424,36 @@
         {
           "from": "node_modules/minimatch",
           "to": "mcp-servers/minimatch",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "resources/mcp-servers/image-ocr-mcp",
+          "to": "mcp-servers/image-ocr-mcp",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "node_modules/pdf-tools-mcp",
+          "to": "mcp-servers/pdf-tools-mcp",
+          "filter": [
+            "**/*",
+            "!**/.bin/**"
+          ]
+        },
+        {
+          "from": "node_modules/playwright",
+          "to": "mcp-servers/playwright",
+          "filter": [
+            "**/*",
+            "!**/.bin/**"
+          ]
+        },
+        {
+          "from": "resources/playwright-browsers",
+          "to": "playwright-browsers",
           "filter": [
             "**/*"
           ]
