@@ -193,6 +193,7 @@ export interface AppConfig {
   isFirstLaunch: boolean;
   // Feishu/Lark integration
   feishu?: FeishuConfig;
+  larkCli?: LarkCliConfig;
 }
 
 // ============================================
@@ -212,6 +213,24 @@ export interface FeishuStatus {
   status: FeishuConnectionStatus;
   error?: string;
   config?: FeishuConfig | null;
+}
+
+// ============================================
+// Lark CLI Integration Types
+// ============================================
+
+export type LarkCliStatus = 'not_configured' | 'configured' | 'auth_valid' | 'auth_expired' | 'error';
+
+export interface LarkCliConfig {
+  configured: boolean;
+  platform?: 'feishu' | 'lark';
+  appId?: string;
+}
+
+export interface LarkCliStatusInfo {
+  status: LarkCliStatus;
+  config?: LarkCliConfig | null;
+  error?: string;
 }
 
 // ============================================

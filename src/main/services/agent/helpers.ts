@@ -15,7 +15,9 @@ import { getSpace } from '../space.service'
 import { getAISourceManager } from '../ai-sources'
 import { broadcastToAll, broadcastToWebSocket } from '../../http/websocket'
 import { onMainWindowChange } from '../window.service'
-import { onAgentEvent as onFeishuAgentEvent } from '../feishu.service'
+// Feishu: DISABLED — replaced by lark-cli integration
+// import { onAgentEvent as onFeishuAgentEvent } from '../feishu.service'
+import { getLarkCliConfig } from '../lark-cli.service'
 import type { ApiCredentials, MainWindowRef } from './types'
 
 // ============================================
@@ -334,11 +336,29 @@ export function getEnabledMcpServers(mcpServers: Record<string, any>): Record<st
  */
 export function buildSystemPromptAppend(workDir: string, modelInfo?: string): string {
   const modelLine = modelInfo ? `You are powered by ${modelInfo}.` : ''
+
+  // Conditionally add lark-cli instructions when configured
+  let larkInstructions = ''
+  try {
+    const larkConfig = getLarkCliConfig()
+    if (larkConfig?.configured) {
+      larkInstructions = `
+<lark_cli>
+lark-cli is available in your PATH for Feishu/Lark operations.
+When the user asks to interact with Feishu/Lark (send messages, check calendar, create docs, manage tasks, etc.), use the lark skill.
+If unsure about a command, read the reference docs in the lark skill's references/ directory first.
+</lark_cli>
+`
+    }
+  } catch {
+    // lark-cli service may not be initialized yet
+  }
+
   return `
 You are Project4, an AI assistant that helps users accomplish real work.
 ${modelLine}
 All created files will be saved in the user's workspace. Current workspace: ${workDir}.
-
+${larkInstructions}
 IMPORTANT: Unless the user explicitly requests otherwise (e.g., "reply in English", "use English"), always respond in Chinese (Simplified Chinese). This applies to:
 - Explanations and descriptions
 - Error messages and warnings
@@ -419,12 +439,12 @@ export function sendToRenderer(
     // WebSocket module might not be initialized yet, ignore
   }
 
-  // 3. Forward to Feishu service for feishu-prefixed conversations
-  try {
-    onFeishuAgentEvent(channel, conversationId, eventData)
-  } catch (error) {
-    // Feishu module might not be initialized yet, ignore
-  }
+  // 3. Forward to Feishu service — DISABLED, replaced by lark-cli
+  // try {
+  //   onFeishuAgentEvent(channel, conversationId, eventData)
+  // } catch (error) {
+  //   // Feishu module might not be initialized yet, ignore
+  // }
 }
 
 /**

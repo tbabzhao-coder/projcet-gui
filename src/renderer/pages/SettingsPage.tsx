@@ -29,7 +29,9 @@ import { CheckCircle2, XCircle, ArrowLeft, Eye, EyeOff } from '../components/ico
 import { Header } from '../components/layout/Header'
 import { McpServerList } from '../components/settings/McpServerList'
 import { SkillList } from '../components/settings/SkillList'
-import { FeishuSettings } from '../components/settings/FeishuSettings'
+// Feishu: DISABLED — replaced by lark-cli integration
+// import { FeishuSettings } from '../components/settings/FeishuSettings'
+import { LarkCliSettings } from '../components/settings/LarkCliSettings'
 import { useTranslation, getCurrentLanguage } from '../i18n'
 import { Loader2, LogOut, Plus, Check, Globe, Key, MessageSquare, type LucideIcon, RefreshCw, ChevronDown, Edit2, Trash2 } from 'lucide-react'
 
@@ -1296,15 +1298,9 @@ export function SettingsPage() {
             </div>
           </section>
 
-          {/* Feishu Integration Section */}
+          {/* Lark CLI Integration Section (replaces Feishu) */}
           <section className="bg-card rounded-xl border border-border p-6">
-            <FeishuSettings
-              config={(config as any)?.feishu || null}
-              onSave={async (feishuConfig) => {
-                await api.setConfig({ feishu: feishuConfig } as any)
-                setConfig({ ...config, feishu: feishuConfig } as any)
-              }}
-            />
+            <LarkCliSettings />
           </section>
 
           {/* Remote Access Section - DISABLED */}

@@ -12,6 +12,7 @@ import { getClaudeConfigDir } from '../config.service'
 import { ensureOpenAICompatRouter, encodeBackendConfig } from '../../openai-compat-router'
 import { buildEnvWithBundledNode, getBundledPlaywrightBrowsersPath } from '../node-runtime.service'
 import { buildEnvWithBundledPython } from '../python-runtime.service'
+import { buildEnvWithLarkCli } from '../lark-cli-runtime.service'
 import type { ApiCredentials } from './types'
 import { inferOpenAIWireApi } from './helpers'
 import { buildSystemPromptAppend } from './helpers'
@@ -245,6 +246,7 @@ export function buildSdkEnv(params: SdkEnvParams): Record<string, string | numbe
   // Git Bash's /etc/profile rebuilds PATH using ORIGINAL_PATH, so we must set both
   let baseEnv = buildEnvWithBundledNode(process.env)
   baseEnv = buildEnvWithBundledPython(baseEnv)
+  baseEnv = buildEnvWithLarkCli(baseEnv)
 
   // Clean inherited ANTHROPIC_* and CLAUDE_* variables to prevent leakage
   // from the parent process into the CLI subprocess

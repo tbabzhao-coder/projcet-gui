@@ -214,6 +214,25 @@ function getBuiltInSkills(): SkillsConfig {
       }
     }
 
+    // lark - Feishu/Lark integration via lark-cli
+    const larkPath = join(skillsDir, 'lark')
+    if (existsSync(larkPath)) {
+      const skillMdPath = join(larkPath, 'SKILL.md')
+      if (existsSync(skillMdPath)) {
+        builtIn['lark'] = {
+          name: 'lark',
+          path: larkPath,
+          type: 'directory',
+          description: 'Feishu/Lark workspace integration via lark-cli. Send messages, manage documents, spreadsheets, calendar events, tasks, and more through the Feishu/Lark open platform.',
+          disabled: false,
+          hasScripts: false,
+          __builtIn: true
+        }
+        console.log('[Config] Built-in lark skill configured:')
+        console.log('  Path:', larkPath)
+      }
+    }
+
   } catch (error) {
     console.warn('[Config] Failed to configure built-in skills:', error)
   }

@@ -29,7 +29,7 @@ const isWebMode = api.isRemoteMode()
 export function HomePage() {
   const { t } = useTranslation()
   const { setView } = useAppStore()
-  const { project4Space, feishuSpace, spaces, loadSpaces, setCurrentSpace, createSpace, updateSpace, deleteSpace } = useSpaceStore()
+  const { project4Space, /* feishuSpace, */ spaces, loadSpaces, setCurrentSpace, createSpace, updateSpace, deleteSpace } = useSpaceStore()
 
   // Dialog state
   const [showCreateDialog, setShowCreateDialog] = useState(false)
@@ -302,7 +302,7 @@ export function HomePage() {
         {/* Space Guide - DISABLED */}
         {/* <SpaceGuide /> */}
 
-        {spaces.length === 0 && !feishuSpace ? (
+        {spaces.length === 0 ? (
           <div className="text-center py-20 animate-fade-in">
             <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-card border border-border flex items-center justify-center">
               <Folder className="w-8 h-8 text-foreground-tertiary" />
@@ -312,8 +312,8 @@ export function HomePage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {/* Feishu Space Card */}
-            {feishuSpace && (
+            {/* Feishu Space Card — DISABLED, replaced by lark-cli */}
+            {/* {feishuSpace && (
               <div
                 key={feishuSpace.id}
                 onClick={() => handleSpaceClick(feishuSpace)}
@@ -332,7 +332,7 @@ export function HomePage() {
                   <span>{t('{{conversations}} conversations', { conversations: feishuSpace.stats.conversationCount })}</span>
                 </div>
               </div>
-            )}
+            )} */}
             {spaces.map((space, index) => (
               <div
                 key={space.id}

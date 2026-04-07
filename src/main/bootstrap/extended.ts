@@ -33,6 +33,7 @@ import { getMainWindow, sendToRenderer } from '../services/window.service'
 import { registerFeishuHandlers } from '../ipc/feishu'
 import { registerApaHandlers } from '../ipc/apa'
 import { initializeFeishuService, stopFeishuService } from '../services/feishu.service'
+import { registerLarkCliHandlers } from '../ipc/lark-cli'
 import { cleanupOldRecordingTmpDirs } from '../services/apa-recorder.service'
 
 /**
@@ -88,10 +89,13 @@ export function initializeExtendedServices(): void {
   // APA: Cleanup old recording tmp dirs from previous sessions
   cleanupOldRecordingTmpDirs()
 
-  // Feishu: Register IPC handlers and initialize service
-  registerFeishuHandlers()
-  initializeFeishuService()
-    .catch(err => console.error('[Bootstrap] Feishu init failed:', err))
+  // Feishu: DISABLED — replaced by lark-cli integration
+  // registerFeishuHandlers()
+  // initializeFeishuService()
+  //   .catch(err => console.error('[Bootstrap] Feishu init failed:', err))
+
+  // Lark CLI: Register IPC handlers for Settings UI
+  registerLarkCliHandlers()
 
   const duration = performance.now() - start
   console.log(`[Bootstrap] Extended services registered in ${duration.toFixed(1)}ms`)
@@ -127,8 +131,8 @@ export async function cleanupExtendedServices(): Promise<void> {
   // Artifact Cache: Close file watchers and clear caches
   await cleanupAllCaches()
 
-  // Feishu: Stop WebSocket connection
-  await stopFeishuService()
+  // Feishu: DISABLED — replaced by lark-cli integration
+  // await stopFeishuService()
 
   console.log('[Bootstrap] Extended services cleaned up')
 }

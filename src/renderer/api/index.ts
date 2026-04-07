@@ -1180,40 +1180,86 @@ export const api = {
   },
 
   // ============================================
-  // Feishu Integration
+  // Feishu Integration — DISABLED, replaced by lark-cli
   // ============================================
 
-  feishuGetStatus: async () => {
+  // feishuGetStatus: async () => {
+  //   if (!isElectron()) {
+  //     return { success: false, error: 'Feishu is only available in desktop mode' }
+  //   }
+  //   return window.project4.feishuGetStatus()
+  // },
+
+  // feishuSaveConfig: async (config: {
+  //   enabled: boolean
+  //   appId: string
+  //   appSecret: string
+  //   domain: 'feishu' | 'lark'
+  // }) => {
+  //   if (!isElectron()) {
+  //     return { success: false, error: 'Feishu is only available in desktop mode' }
+  //   }
+  //   return window.project4.feishuSaveConfig(config)
+  // },
+
+  // feishuStop: async () => {
+  //   if (!isElectron()) {
+  //     return { success: false, error: 'Feishu is only available in desktop mode' }
+  //   }
+  //   return window.project4.feishuStop()
+  // },
+
+  // onFeishuStatusChange: (callback: (data: unknown) => void) => {
+  //   if (!isElectron()) {
+  //     return () => {}
+  //   }
+  //   return window.project4.onFeishuStatusChange(callback)
+  // },
+
+  // ============================================
+  // Lark CLI Integration
+  // ============================================
+
+  larkCliGetStatus: async () => {
     if (!isElectron()) {
-      return { success: false, error: 'Feishu is only available in desktop mode' }
+      return { success: false, error: 'Lark CLI is only available in desktop mode' }
     }
-    return window.project4.feishuGetStatus()
+    return window.project4.larkCliGetStatus()
   },
 
-  feishuSaveConfig: async (config: {
-    enabled: boolean
-    appId: string
-    appSecret: string
-    domain: 'feishu' | 'lark'
-  }) => {
+  larkCliInitConfig: async (options: { newApp: boolean }) => {
     if (!isElectron()) {
-      return { success: false, error: 'Feishu is only available in desktop mode' }
+      return { success: false, error: 'Lark CLI is only available in desktop mode' }
     }
-    return window.project4.feishuSaveConfig(config)
+    return window.project4.larkCliInitConfig(options)
   },
 
-  feishuStop: async () => {
+  larkCliAuthLogin: async (options?: { scope?: string; domain?: string }) => {
     if (!isElectron()) {
-      return { success: false, error: 'Feishu is only available in desktop mode' }
+      return { success: false, error: 'Lark CLI is only available in desktop mode' }
     }
-    return window.project4.feishuStop()
+    return window.project4.larkCliAuthLogin(options)
   },
 
-  onFeishuStatusChange: (callback: (data: unknown) => void) => {
+  larkCliLogout: async () => {
+    if (!isElectron()) {
+      return { success: false, error: 'Lark CLI is only available in desktop mode' }
+    }
+    return window.project4.larkCliLogout()
+  },
+
+  larkCliManualConfig: async (config: { platform: string; appId: string; appSecret: string }) => {
+    if (!isElectron()) {
+      return { success: false, error: 'Lark CLI is only available in desktop mode' }
+    }
+    return window.project4.larkCliManualConfig(config)
+  },
+
+  onLarkCliStatusChange: (callback: (data: unknown) => void) => {
     if (!isElectron()) {
       return () => {}
     }
-    return window.project4.onFeishuStatusChange(callback)
+    return window.project4.onLarkCliStatusChange(callback)
   },
 
   // ============================================

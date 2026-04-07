@@ -280,16 +280,24 @@ export interface Project4API {
   }>>
   onBootstrapExtendedReady: (callback: (data: { timestamp: number; duration: number }) => void) => () => void
 
-  // Feishu Integration
-  feishuGetStatus: () => Promise<IpcResponse>
-  feishuSaveConfig: (config: {
-    enabled: boolean
-    appId: string
-    appSecret: string
-    domain: 'feishu' | 'lark'
-  }) => Promise<IpcResponse>
-  feishuStop: () => Promise<IpcResponse>
-  onFeishuStatusChange: (callback: (data: unknown) => void) => () => void
+  // Feishu Integration — DISABLED, replaced by lark-cli
+  // feishuGetStatus: () => Promise<IpcResponse>
+  // feishuSaveConfig: (config: {
+  //   enabled: boolean
+  //   appId: string
+  //   appSecret: string
+  //   domain: 'feishu' | 'lark'
+  // }) => Promise<IpcResponse>
+  // feishuStop: () => Promise<IpcResponse>
+  // onFeishuStatusChange: (callback: (data: unknown) => void) => () => void
+
+  // Lark CLI Integration
+  larkCliGetStatus: () => Promise<IpcResponse>
+  larkCliInitConfig: (options: { newApp: boolean }) => Promise<IpcResponse>
+  larkCliAuthLogin: (options?: { scope?: string; domain?: string }) => Promise<IpcResponse>
+  larkCliLogout: () => Promise<IpcResponse>
+  larkCliManualConfig: (config: { platform: string; appId: string; appSecret: string }) => Promise<IpcResponse>
+  onLarkCliStatusChange: (callback: (data: unknown) => void) => () => void
 
   // APA (AI-Powered Automation)
   apaStartRecording: (options: { url?: string }) => Promise<IpcResponse>
@@ -538,11 +546,19 @@ const api: Project4API = {
   getBootstrapStatus: () => ipcRenderer.invoke('bootstrap:get-status'),
   onBootstrapExtendedReady: (callback) => createEventListener('bootstrap:extended-ready', callback as (data: unknown) => void),
 
-  // Feishu Integration
-  feishuGetStatus: () => ipcRenderer.invoke('feishu:get-status'),
-  feishuSaveConfig: (config) => ipcRenderer.invoke('feishu:save-config', config),
-  feishuStop: () => ipcRenderer.invoke('feishu:stop'),
-  onFeishuStatusChange: (callback) => createEventListener('feishu:status-change', callback),
+  // Feishu Integration — DISABLED, replaced by lark-cli
+  // feishuGetStatus: () => ipcRenderer.invoke('feishu:get-status'),
+  // feishuSaveConfig: (config) => ipcRenderer.invoke('feishu:save-config', config),
+  // feishuStop: () => ipcRenderer.invoke('feishu:stop'),
+  // onFeishuStatusChange: (callback) => createEventListener('feishu:status-change', callback),
+
+  // Lark CLI Integration
+  larkCliGetStatus: () => ipcRenderer.invoke('lark-cli:get-status'),
+  larkCliInitConfig: (options) => ipcRenderer.invoke('lark-cli:init-config', options),
+  larkCliAuthLogin: (options) => ipcRenderer.invoke('lark-cli:auth-login', options),
+  larkCliLogout: () => ipcRenderer.invoke('lark-cli:logout'),
+  larkCliManualConfig: (config) => ipcRenderer.invoke('lark-cli:manual-config', config),
+  onLarkCliStatusChange: (callback) => createEventListener('lark-cli:status-change', callback),
 
   // APA (AI-Powered Automation)
   apaStartRecording: (options) => ipcRenderer.invoke('apa:start-recording', options),

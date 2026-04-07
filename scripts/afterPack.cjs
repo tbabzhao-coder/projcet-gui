@@ -163,6 +163,64 @@ module.exports = async function(context) {
   console.log('');
 
   // ============================================================================
+  // Part 1b: 清理不需要的 lark-cli 运行时
+  // ============================================================================
+
+  console.log('========================================');
+  console.log('[afterPack] Cleaning up lark-cli runtimes');
+  console.log('========================================');
+
+  if (fs.existsSync(resourcesDir)) {
+    const larkCliDirs = ['lark-cli-arm64', 'lark-cli-x64', 'lark-cli-win-x64', 'lark-cli-linux-x64'];
+    const larkToRemove = [];
+
+    if (electronPlatformName === 'darwin') {
+      const archStr = String(arch);
+      if (arch === 0 || archStr === 'arm64') {
+        larkToRemove.push('lark-cli-x64', 'lark-cli-win-x64', 'lark-cli-linux-x64');
+        console.log('  ✓ Keep: lark-cli-arm64');
+      } else if (arch === 1 || archStr === 'x64') {
+        larkToRemove.push('lark-cli-arm64', 'lark-cli-win-x64', 'lark-cli-linux-x64');
+        console.log('  ✓ Keep: lark-cli-x64');
+      } else if (arch === 2 || archStr === 'universal') {
+        larkToRemove.push('lark-cli-win-x64', 'lark-cli-linux-x64');
+        console.log('  ✓ Keep: lark-cli-arm64, lark-cli-x64');
+      } else {
+        if (appOutDir.includes('arm64')) {
+          larkToRemove.push('lark-cli-x64', 'lark-cli-win-x64', 'lark-cli-linux-x64');
+        } else {
+          larkToRemove.push('lark-cli-arm64', 'lark-cli-win-x64', 'lark-cli-linux-x64');
+        }
+      }
+    } else if (electronPlatformName === 'win32') {
+      larkToRemove.push('lark-cli-arm64', 'lark-cli-x64', 'lark-cli-linux-x64');
+      console.log('  ✓ Keep: lark-cli-win-x64');
+    } else if (electronPlatformName === 'linux') {
+      larkToRemove.push('lark-cli-arm64', 'lark-cli-x64', 'lark-cli-win-x64');
+      console.log('  ✓ Keep: lark-cli-linux-x64');
+    }
+
+    let larkRemoved = 0;
+    for (const dir of larkToRemove) {
+      const fullPath = path.join(resourcesDir, dir);
+      if (fs.existsSync(fullPath)) {
+        const size = getFolderSize(fullPath);
+        try {
+          fs.rmSync(fullPath, { recursive: true, force: true });
+          console.log(`  ✓ Removed ${dir} (${(size / 1024 / 1024).toFixed(2)} MB)`);
+          larkRemoved += size;
+        } catch (error) {
+          console.error(`  ✗ Failed to remove ${dir}:`, error.message);
+        }
+      }
+    }
+    console.log(`  Total lark-cli removed: ${(larkRemoved / 1024 / 1024).toFixed(2)} MB`);
+  }
+
+  console.log('========================================');
+  console.log('');
+
+  // ============================================================================
   // Part 2: Windows 图标替换 (rcedit)
   // ============================================================================
 
