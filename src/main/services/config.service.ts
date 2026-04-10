@@ -214,6 +214,25 @@ function getBuiltInSkills(): SkillsConfig {
       }
     }
 
+    // webank-email - WeBank enterprise email via IMAP/SMTP
+    const webankEmailPath = join(skillsDir, 'webank-email')
+    if (existsSync(webankEmailPath)) {
+      const skillMdPath = join(webankEmailPath, 'SKILL.md')
+      if (existsSync(skillMdPath)) {
+        builtIn['webank-email'] = {
+          name: 'webank-email',
+          path: webankEmailPath,
+          type: 'directory',
+          description: '微众银行企业邮箱收发技能。支持 IMAP 收件（查看、搜索、下载附件）和 SMTP 发件（纯文本、HTML、附件）。首次使用时引导用户配置邮箱凭证，密码 AES-256-GCM 加密存储。关键词：邮件、邮箱、收件、发件、email、webank',
+          disabled: false,
+          hasScripts: true,
+          __builtIn: true
+        }
+        console.log('[Config] Built-in webank-email skill configured:')
+        console.log('  Path:', webankEmailPath)
+      }
+    }
+
     // lark - Feishu/Lark integration via lark-cli
     const larkPath = join(skillsDir, 'lark')
     if (existsSync(larkPath)) {

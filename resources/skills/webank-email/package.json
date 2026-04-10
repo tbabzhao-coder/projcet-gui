@@ -1,0 +1,11 @@
+{
+  "name": "webank-email-skill",
+  "version": "1.0.0",
+  "private": true,
+  "description": "WeBank enterprise email skill for Project4",
+  "dependencies": {
+    "imap": "^0.8.19",
+    "mailparser": "^3.7.2",
+    "nodemailer": "^6.9.16"
+  }
+}
