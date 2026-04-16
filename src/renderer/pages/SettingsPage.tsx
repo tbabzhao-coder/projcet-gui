@@ -8,6 +8,8 @@ import { api } from '../api'
 import { v4 as uuidv4 } from 'uuid'
 import type { AppConfig, ThemeMode, McpServersConfig, SkillsConfig } from '../types'
 import type { AISource, AISourcesConfig, ModelOption } from '../../shared/types/ai-sources'
+import { useConfirmDialog } from '../hooks/useConfirmDialog'
+import { NotificationChannelsSection } from '../components/settings/NotificationChannelsSection'
 import { AVAILABLE_MODELS, DEFAULT_MODEL } from '../../shared/types/ai-sources'
 
 /**
@@ -96,6 +98,7 @@ function getCurrentSourceV2(config: AppConfig | null): AISource | null {
 export function SettingsPage() {
   const { t } = useTranslation()
   const { config, setConfig, goBack } = useAppStore()
+  const { showConfirm, DialogComponent } = useConfirmDialog()
 
   // Get v2 aiSources
   const aiSourcesV2 = getAISourcesV2(config)
@@ -835,9 +838,15 @@ export function SettingsPage() {
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation()
-                              if (window.confirm(t('Are you sure you want to delete this configuration?'))) {
+                              const confirmed = await showConfirm({
+                                title: t('Are you sure you want to delete this configuration?'),
+                                confirmLabel: t('Delete'),
+                                cancelLabel: t('Cancel'),
+                                variant: 'danger'
+                              })
+                              if (confirmed) {
                                 handleDeleteCustom(source.id)
                               }
                             }}
@@ -1303,6 +1312,9 @@ export function SettingsPage() {
             <LarkCliSettings />
           </section>
 
+          {/* Notification Channels Section */}
+          <NotificationChannelsSection config={config} setConfig={setConfig} />
+
           {/* Remote Access Section - DISABLED */}
           {/* {!api.isRemoteMode() && (
           <section className="bg-card rounded-xl border border-border p-6">
@@ -1559,6 +1571,7 @@ export function SettingsPage() {
           </div>
         </div>
       </main>
+      {DialogComponent}
     </div>
   )
 }

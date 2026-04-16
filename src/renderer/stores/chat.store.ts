@@ -46,6 +46,10 @@ interface SessionState {
   compactInfo: CompactInfo | null
   // Text block version - increments on each new text block (for StreamingBubble reset)
   textBlockVersion: number
+  // Plan mode - tracked per session for ExitPlanMode interception
+  planModeEnabled?: boolean
+  // Plan content to show as assistant message after agent completes (set by "Give Feedback")
+  planFeedbackContent?: string
 }
 
 // Create empty session state
@@ -117,12 +121,12 @@ interface ChatState {
   loadMessageThoughts: (spaceId: string | null, conversationId: string | null, messageId: string) => Promise<Thought[]>
 
   // Messaging
-  sendMessage: (content: string, images?: ImageAttachment[], aiBrowserEnabled?: boolean, thinkingEnabled?: boolean) => Promise<void>
+  sendMessage: (content: string, images?: ImageAttachment[], aiBrowserEnabled?: boolean, thinkingEnabled?: boolean, planModeEnabled?: boolean) => Promise<void>
   stopGeneration: (conversationId?: string) => Promise<void>
 
   // Tool approval
   approveTool: (conversationId: string) => Promise<void>
-  rejectTool: (conversationId: string) => Promise<void>
+  rejectTool: (conversationId: string, rejectMessage?: string, planContent?: string) => Promise<void>
   answerQuestion: (conversationId: string, answers: Record<string, string>) => Promise<void>
 
   // Event handlers (called from App component) - with session IDs
@@ -543,7 +547,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   // Send message (with optional images for multi-modal, optional AI Browser and thinking mode)
-  sendMessage: async (content, images, aiBrowserEnabled, thinkingEnabled) => {
+  sendMessage: async (content, images, aiBrowserEnabled, thinkingEnabled, planModeEnabled) => {
     const conversation = get().getCurrentConversation()
     const conversationMeta = get().getCurrentConversationMeta()
     const { currentSpaceId } = get()
@@ -567,7 +571,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
           thoughts: [],
           isThinking: true,
           pendingToolApproval: null,
-          error: null
+          error: null,
+          planModeEnabled: !!planModeEnabled
         })
         return { sessions: newSessions }
       })
@@ -647,6 +652,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         images: images,  // Pass images to API
         aiBrowserEnabled,  // Pass AI Browser state to API
         thinkingEnabled,  // Pass thinking mode to API
+        planModeEnabled,  // Pass plan mode to API
         canvasContext: buildCanvasContext()  // Pass canvas context for AI awareness
       })
     } catch (error) {
@@ -709,14 +715,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   // Reject tool for a specific conversation
-  rejectTool: async (conversationId: string) => {
+  rejectTool: async (conversationId: string, rejectMessage?: string, planContent?: string) => {
     try {
-      await api.rejectTool(conversationId)
+      await api.rejectTool(conversationId, rejectMessage)
+
+      // Clear pending approval and store plan content for post-complete injection
       set((state) => {
         const newSessions = new Map(state.sessions)
         const session = newSessions.get(conversationId)
         if (session) {
-          newSessions.set(conversationId, { ...session, pendingToolApproval: null })
+          newSessions.set(conversationId, {
+            ...session,
+            pendingToolApproval: null,
+            // Store plan content — handleAgentComplete will inject it as assistant message
+            // after backend data is loaded (so it won't be overwritten)
+            ...(planContent ? { planFeedbackContent: planContent } : {})
+          })
         }
         return { sessions: newSessions }
       })
@@ -788,12 +802,31 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const { conversationId, ...toolCall } = data
     // tool call logged in App.tsx
 
+    // Plan mode: ExitPlanMode approval is handled by backend canUseTool
+    // Two events arrive for ExitPlanMode:
+    // 1. Streaming phase (status: 'running') - ignore this one
+    // 2. Permission phase (requiresApproval: true, with plan content in description) - show approval UI
+    const session = get().sessions.get(conversationId)
+    if (session?.planModeEnabled && toolCall.name === 'ExitPlanMode' && toolCall.requiresApproval) {
+      // Backend already populated description with plan content
+      set((state) => {
+        const newSessions = new Map(state.sessions)
+        const sess = newSessions.get(conversationId) || createEmptySessionState()
+        newSessions.set(conversationId, {
+          ...sess,
+          pendingToolApproval: toolCall as ToolCall
+        })
+        return { sessions: newSessions }
+      })
+      return
+    }
+
     if (toolCall.requiresApproval) {
       set((state) => {
         const newSessions = new Map(state.sessions)
-        const session = newSessions.get(conversationId) || createEmptySessionState()
+        const sess = newSessions.get(conversationId) || createEmptySessionState()
         newSessions.set(conversationId, {
-          ...session,
+          ...sess,
           pendingToolApproval: toolCall as ToolCall
         })
         return { sessions: newSessions }
@@ -865,6 +898,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
       if (response.success && response.data) {
         const updatedConversation = response.data as Conversation
 
+        // Check if we need to inject plan feedback content
+        const session = get().sessions.get(conversationId)
+        if (session?.planFeedbackContent) {
+          // Inject plan content as a temporary assistant message
+          const planMessage: Message = {
+            id: `plan-feedback-${Date.now()}`,
+            role: 'assistant',
+            content: session.planFeedbackContent,
+            timestamp: new Date().toISOString()
+          }
+          updatedConversation.messages = [...updatedConversation.messages, planMessage]
+        }
+
         // Extract updated metadata
         const updatedMeta: ConversationMeta = {
           id: updatedConversation.id,
@@ -905,6 +951,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
               ...currentSession,
               isGenerating: false,
               streamingContent: '',
+              planFeedbackContent: undefined,  // Clear after injection
               compactInfo: null  // Clear temporary compact notification
             })
           }

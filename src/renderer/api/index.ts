@@ -374,6 +374,7 @@ export const api = {
     }>
     aiBrowserEnabled?: boolean  // Enable AI Browser tools
     thinkingEnabled?: boolean  // Enable extended thinking mode
+    planModeEnabled?: boolean  // Enable plan mode
     canvasContext?: {  // Canvas context for AI awareness
       isOpen: boolean
       tabCount: number
@@ -417,11 +418,11 @@ export const api = {
     return httpRequest('POST', '/api/agent/approve', { conversationId })
   },
 
-  rejectTool: async (conversationId: string): Promise<ApiResponse> => {
+  rejectTool: async (conversationId: string, rejectMessage?: string): Promise<ApiResponse> => {
     if (isElectron()) {
-      return window.project4.rejectTool(conversationId)
+      return window.project4.rejectTool(conversationId, rejectMessage)
     }
-    return httpRequest('POST', '/api/agent/reject', { conversationId })
+    return httpRequest('POST', '/api/agent/reject', { conversationId, rejectMessage })
   },
 
   answerQuestion: async (conversationId: string, answers: Record<string, string>): Promise<ApiResponse> => {
@@ -1369,6 +1370,26 @@ export const api = {
   onApaExecutionStopped: (callback: (data: unknown) => void) => {
     if (!isElectron()) return () => {}
     return window.project4.onApaExecutionStopped(callback)
+  },
+
+  // ===== Notification Channels =====
+  testNotificationChannel: async (channelType: string): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.project4.testNotificationChannel(channelType)
+    }
+    return httpRequest('POST', '/api/notify-channels/test', { channelType })
+  },
+
+  clearNotificationChannelCache: async (): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.project4.clearNotificationChannelCache()
+    }
+    return httpRequest('POST', '/api/notify-channels/clear-cache')
+  },
+
+  onNotificationToast: (callback: (data: unknown) => void) => {
+    if (!isElectron()) return () => {}
+    return window.project4.onNotificationToast(callback)
   },
 }
 

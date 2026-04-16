@@ -194,6 +194,8 @@ export interface AppConfig {
   // Feishu/Lark integration
   feishu?: FeishuConfig;
   larkCli?: LarkCliConfig;
+  // Notification channels (external push: email, wecom, dingtalk, feishu, webhook)
+  notificationChannels?: import('../../shared/types/notification-channels').NotificationChannelsConfig;
 }
 
 // ============================================

@@ -82,6 +82,7 @@ export interface Project4API {
     }>
     aiBrowserEnabled?: boolean  // Enable AI Browser tools
     thinkingEnabled?: boolean  // Enable extended thinking mode
+    planModeEnabled?: boolean  // Enable plan mode
     canvasContext?: {  // Canvas context for AI awareness
       isOpen: boolean
       tabCount: number
@@ -102,7 +103,7 @@ export interface Project4API {
   }) => Promise<IpcResponse>
   stopGeneration: (conversationId?: string) => Promise<IpcResponse>
   approveTool: (conversationId: string) => Promise<IpcResponse>
-  rejectTool: (conversationId: string) => Promise<IpcResponse>
+  rejectTool: (conversationId: string, rejectMessage?: string) => Promise<IpcResponse>
   answerQuestion: (conversationId: string, answers: Record<string, string>) => Promise<IpcResponse>
   getSessionState: (conversationId: string) => Promise<IpcResponse>
   ensureSessionWarm: (spaceId: string, conversationId: string) => Promise<IpcResponse>
@@ -299,6 +300,11 @@ export interface Project4API {
   larkCliManualConfig: (config: { platform: string; appId: string; appSecret: string }) => Promise<IpcResponse>
   onLarkCliStatusChange: (callback: (data: unknown) => void) => () => void
 
+  // Notification Channels
+  testNotificationChannel: (channelType: string) => Promise<IpcResponse>
+  clearNotificationChannelCache: () => Promise<IpcResponse>
+  onNotificationToast: (callback: (data: unknown) => void) => () => void
+
   // APA (AI-Powered Automation)
   apaStartRecording: (options: { url?: string; workDir?: string }) => Promise<IpcResponse>
   apaStopRecording: () => Promise<IpcResponse>
@@ -409,7 +415,7 @@ const api: Project4API = {
   sendMessage: (request) => ipcRenderer.invoke('agent:send-message', request),
   stopGeneration: (conversationId) => ipcRenderer.invoke('agent:stop', conversationId),
   approveTool: (conversationId) => ipcRenderer.invoke('agent:approve-tool', conversationId),
-  rejectTool: (conversationId) => ipcRenderer.invoke('agent:reject-tool', conversationId),
+  rejectTool: (conversationId, rejectMessage) => ipcRenderer.invoke('agent:reject-tool', conversationId, rejectMessage),
   answerQuestion: (conversationId, answers) => ipcRenderer.invoke('agent:answer-question', conversationId, answers),
   getSessionState: (conversationId) => ipcRenderer.invoke('agent:get-session-state', conversationId),
   ensureSessionWarm: (spaceId, conversationId) => ipcRenderer.invoke('agent:ensure-session-warm', spaceId, conversationId),
@@ -569,6 +575,11 @@ const api: Project4API = {
   larkCliLogout: () => ipcRenderer.invoke('lark-cli:logout'),
   larkCliManualConfig: (config) => ipcRenderer.invoke('lark-cli:manual-config', config),
   onLarkCliStatusChange: (callback) => createEventListener('lark-cli:status-change', callback),
+
+  // Notification Channels
+  testNotificationChannel: (channelType) => ipcRenderer.invoke('notify-channels:test', channelType),
+  clearNotificationChannelCache: () => ipcRenderer.invoke('notify-channels:clear-cache'),
+  onNotificationToast: (callback) => createEventListener('notification:toast', callback),
 
   // APA (AI-Powered Automation)
   apaStartRecording: (options) => ipcRenderer.invoke('apa:start-recording', options),

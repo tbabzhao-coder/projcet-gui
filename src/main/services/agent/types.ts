@@ -79,6 +79,7 @@ export interface AgentRequest {
   images?: ImageAttachment[]  // Optional images for multi-modal messages
   aiBrowserEnabled?: boolean  // Enable AI Browser tools for this request
   thinkingEnabled?: boolean   // Enable extended thinking mode (thinkingConfig budgetTokens: 10240)
+  planModeEnabled?: boolean   // Enable plan mode (setPermissionMode('plan'))
   model?: string              // Model to use (for future model switching)
   canvasContext?: CanvasContext  // Current canvas state for AI awareness
 }
@@ -138,9 +139,10 @@ export interface SessionState {
   abortController: AbortController
   spaceId: string
   conversationId: string
-  pendingPermissionResolve: ((approved: boolean) => void) | null
+  pendingPermissionResolve: ((approved: boolean, rejectMessage?: string) => void) | null
   pendingQuestionResolve: ((answers: Record<string, string>) => void) | null
   thoughts: Thought[]  // Backend accumulates thoughts (Single Source of Truth)
+  planModeEnabled?: boolean  // Whether plan mode is active for current message
 }
 
 // ============================================

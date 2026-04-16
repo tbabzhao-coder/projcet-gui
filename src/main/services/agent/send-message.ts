@@ -91,10 +91,11 @@ export async function sendMessage(
     images,
     aiBrowserEnabled,
     thinkingEnabled,
+    planModeEnabled,
     canvasContext
   } = request
 
-  console.log(`[Agent] sendMessage: conv=${conversationId}${images && images.length > 0 ? `, images=${images.length}` : ''}${aiBrowserEnabled ? ', AI Browser enabled' : ''}${thinkingEnabled ? ', thinking=ON' : ''}${canvasContext?.isOpen ? `, canvas tabs=${canvasContext.tabCount}` : ''}`)
+  console.log(`[Agent] sendMessage: conv=${conversationId}${images && images.length > 0 ? `, images=${images.length}` : ''}${aiBrowserEnabled ? ', AI Browser enabled' : ''}${thinkingEnabled ? ', thinking=ON' : ''}${planModeEnabled ? ', plan=ON' : ''}${canvasContext?.isOpen ? `, canvas tabs=${canvasContext.tabCount}` : ''}`)
 
   const config = getConfig()
   const workDir = getWorkingDir(spaceId)
@@ -129,6 +130,7 @@ export async function sendMessage(
 
   // Register this session in the active sessions map
   const sessionState = createSessionState(spaceId, conversationId, abortController)
+  sessionState.planModeEnabled = !!planModeEnabled
   registerActiveSession(conversationId, sessionState)
 
   // Add user message to conversation (with images if provided)
@@ -229,6 +231,12 @@ export async function sendMessage(
       if (v2Session.setMaxThinkingTokens) {
         await v2Session.setMaxThinkingTokens(thinkingEnabled ? 10240 : null)
         console.log(`[Agent][${conversationId}] Thinking mode: ${thinkingEnabled ? 'ON (10240 tokens)' : 'OFF'}`)
+      }
+
+      // Set permission mode dynamically (plan mode toggle)
+      if (v2Session.setPermissionMode) {
+        await v2Session.setPermissionMode(planModeEnabled ? 'plan' : 'acceptEdits')
+        console.log(`[Agent][${conversationId}] Permission mode: ${planModeEnabled ? 'plan' : 'acceptEdits'}`)
       }
     } catch (e) {
       console.error(`[Agent][${conversationId}] Failed to set dynamic params:`, e)

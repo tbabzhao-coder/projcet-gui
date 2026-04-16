@@ -29,6 +29,7 @@ export function registerAgentHandlers(window: BrowserWindow | null): void {
           size?: number
         }>
         thinkingEnabled?: boolean  // Enable extended thinking mode
+        planModeEnabled?: boolean  // Enable plan mode
       }
     ) => {
       try {
@@ -78,9 +79,9 @@ export function registerAgentHandlers(window: BrowserWindow | null): void {
   })
 
   // Reject tool execution for a specific conversation
-  ipcMain.handle('agent:reject-tool', async (_event, conversationId: string) => {
+  ipcMain.handle('agent:reject-tool', async (_event, conversationId: string, rejectMessage?: string) => {
     try {
-      handleToolApproval(conversationId, false)
+      handleToolApproval(conversationId, false, rejectMessage)
       return { success: true }
     } catch (error: unknown) {
       const err = error as Error

@@ -173,8 +173,9 @@ export async function testMcpConnections(
           ELECTRON_NO_ATTACH_CONSOLE: '1',
           ANTHROPIC_API_KEY: anthropicApiKey,  // Our configured API key (overrides system)
           ANTHROPIC_BASE_URL: anthropicBaseUrl,
-          NO_PROXY: 'localhost,127.0.0.1',
-          no_proxy: 'localhost,127.0.0.1',
+          NO_PROXY: 'localhost,127.0.0.1,*.feishu.cn,*.larksuite.com,*.larkoffice.com',
+          no_proxy: 'localhost,127.0.0.1,*.feishu.cn,*.larksuite.com,*.larkoffice.com',
+          LARK_CLI_NO_PROXY: '1',
           // Disable unnecessary API requests
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
           DISABLE_TELEMETRY: '1',

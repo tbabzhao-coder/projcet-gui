@@ -20,7 +20,7 @@
  */
 
 import { useState, useRef, useEffect, useMemo, KeyboardEvent, ClipboardEvent, DragEvent } from 'react'
-import { Plus, ImagePlus, Loader2, AlertCircle, Atom, Globe } from 'lucide-react'
+import { Plus, ImagePlus, Loader2, AlertCircle, Atom, Globe, ListChecks } from 'lucide-react'
 import { useOnboardingStore } from '../../stores/onboarding.store'
 import { useAIBrowserStore } from '../../stores/ai-browser.store'
 import { getOnboardingPrompt } from '../onboarding/onboardingData'
@@ -35,7 +35,7 @@ export interface SkillInfo {
 }
 
 interface InputAreaProps {
-  onSend: (content: string, images?: ImageAttachment[], thinkingEnabled?: boolean) => void
+  onSend: (content: string, images?: ImageAttachment[], thinkingEnabled?: boolean, planModeEnabled?: boolean) => void
   onStop: () => void
   isGenerating: boolean
   placeholder?: string
@@ -63,6 +63,7 @@ export function InputArea({ onSend, onStop, isGenerating, placeholder, isCompact
   const [isProcessingImages, setIsProcessingImages] = useState(false)
   const [imageError, setImageError] = useState<ImageError | null>(null)
   const [thinkingEnabled, setThinkingEnabled] = useState(false)
+  const [planModeEnabled, setPlanModeEnabled] = useState(false)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [slashMenuOpen, setSlashMenuOpen] = useState(false)
   const [slashFilter, setSlashFilter] = useState('')
@@ -293,7 +294,7 @@ export function InputArea({ onSend, onStop, isGenerating, placeholder, isCompact
         }
       }
 
-      onSend(textToSend, images.length > 0 ? images : undefined, thinkingEnabled)
+      onSend(textToSend, images.length > 0 ? images : undefined, thinkingEnabled, planModeEnabled)
 
       if (!isOnboardingSendStep) {
         setContent('')
@@ -498,6 +499,8 @@ export function InputArea({ onSend, onStop, isGenerating, placeholder, isCompact
             isProcessingImages={isProcessingImages}
             thinkingEnabled={thinkingEnabled}
             onThinkingToggle={() => setThinkingEnabled(!thinkingEnabled)}
+            planModeEnabled={planModeEnabled}
+            onPlanModeToggle={() => setPlanModeEnabled(!planModeEnabled)}
             aiBrowserEnabled={aiBrowserEnabled}
             onAIBrowserToggle={() => setAIBrowserEnabled(!aiBrowserEnabled)}
             showAttachMenu={showAttachMenu}
@@ -528,6 +531,8 @@ interface InputToolbarProps {
   isProcessingImages: boolean
   thinkingEnabled: boolean
   onThinkingToggle: () => void
+  planModeEnabled: boolean
+  onPlanModeToggle: () => void
   aiBrowserEnabled: boolean
   onAIBrowserToggle: () => void
   showAttachMenu: boolean
@@ -547,6 +552,8 @@ function InputToolbar({
   isProcessingImages,
   thinkingEnabled,
   onThinkingToggle,
+  planModeEnabled,
+  onPlanModeToggle,
   aiBrowserEnabled,
   onAIBrowserToggle,
   showAttachMenu,
@@ -648,6 +655,24 @@ function InputToolbar({
             <span className="text-xs">{t('Deep Thinking')}</span>
           </button>
         )}
+
+        {/* Plan mode toggle */}
+        {!isGenerating && !isOnboarding && (
+          <button
+            onClick={onPlanModeToggle}
+            className={`h-8 flex items-center gap-1.5 px-2.5 rounded-lg
+              transition-colors duration-200
+              ${planModeEnabled
+                ? 'bg-primary/10 text-primary'
+                : 'text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50'
+              }
+            `}
+            title={planModeEnabled ? t('Disable Plan Mode') : t('Enable Plan Mode')}
+          >
+            <ListChecks size={15} />
+            <span className="text-xs">{t('Plan Mode')}</span>
+          </button>
+        )}
       </div>
 
       {/* Right section: action button only */}
@@ -675,7 +700,7 @@ function InputToolbar({
                 : 'bg-muted/50 text-muted-foreground/40 cursor-not-allowed'
               }
             `}
-            title={thinkingEnabled ? t('Send (Deep Thinking)') : t('Send')}
+            title={planModeEnabled ? t('Send (Plan Mode)') : thinkingEnabled ? t('Send (Deep Thinking)') : t('Send')}
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />

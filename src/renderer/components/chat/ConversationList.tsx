@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import type { ConversationMeta } from '../../types'
 import { MessageSquare, Plus } from '../icons/ToolIcons'
 import { useTranslation } from '../../i18n'
+import { ContextMenu, type ContextMenuItem } from '../ui/ContextMenu'
 
 // Width constraints (in pixels)
 const MIN_WIDTH = 140
@@ -51,13 +52,6 @@ function StatusDot({ status }: { status: SessionStatus }) {
   return <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotClass}`} />
 }
 
-// Context menu state
-interface ContextMenuState {
-  x: number
-  y: number
-  conversationId: string
-}
-
 export function ConversationList({
   conversations,
   currentConversationId,
@@ -74,10 +68,8 @@ export function ConversationList({
   const [isDragging, setIsDragging] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
-  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const editInputRef = useRef<HTMLInputElement>(null)
-  const contextMenuRef = useRef<HTMLDivElement>(null)
 
   // Split conversations into pinned and unpinned
   const pinnedConversations = conversations.filter((c) => c.pinned)
@@ -120,30 +112,6 @@ export function ConversationList({
       editInputRef.current.select()
     }
   }, [editingId])
-
-  // Close context menu on click outside or Esc
-  useEffect(() => {
-    if (!contextMenu) return
-
-    const handleClickOutside = (e: MouseEvent) => {
-      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
-        setContextMenu(null)
-      }
-    }
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setContextMenu(null)
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside)
-    document.addEventListener('keydown', handleKeyDown)
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [contextMenu])
 
   // Format date
   const formatDate = (dateStr: string) => {
@@ -192,31 +160,59 @@ export function ConversationList({
     }
   }
 
-  // Handle right-click context menu
-  const handleContextMenu = (e: React.MouseEvent, conversationId: string) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setContextMenu({ x: e.clientX, y: e.clientY, conversationId })
-  }
+  // Handle right-click context menu - now handled by ContextMenu component
 
   // Get conversation by id from the full list
   const getConversation = (id: string) => conversations.find((c) => c.id === id)
+
+  // Build context menu items for a conversation
+  const getMenuItems = (conversation: ConversationMeta): ContextMenuItem[] => [
+    {
+      label: conversation.pinned ? t('Unpin') : t('Pin'),
+      icon: <PinIcon className="w-4 h-4" />,
+      onClick: () => onTogglePin?.(conversation.id),
+      hidden: !onTogglePin
+    },
+    {
+      label: t('Rename'),
+      icon: (
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+        </svg>
+      ),
+      onClick: () => {
+        setEditingId(conversation.id)
+        setEditingTitle(conversation.title || '')
+      },
+      hidden: !onRename
+    },
+    { label: '', onClick: () => {}, separator: true, hidden: !onDelete },
+    {
+      label: t('Delete'),
+      icon: (
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+        </svg>
+      ),
+      onClick: () => onDelete?.(conversation.id),
+      hidden: !onDelete
+    }
+  ]
 
   // Render a single conversation item
   const renderConversationItem = (conversation: ConversationMeta) => {
     const status = getSessionStatus?.(conversation.id) ?? null
 
     return (
-      <div
-        key={conversation.id}
-        onClick={() => editingId !== conversation.id && onSelect(conversation.id)}
-        onContextMenu={(e) => handleContextMenu(e, conversation.id)}
-        className={`w-full px-3 py-2.5 text-left rounded-lg transition-all cursor-pointer group ${
-          conversation.id === currentConversationId
-            ? 'bg-primary/10 shadow-sm'
-            : 'hover:bg-secondary/40'
-        }`}
-      >
+      <ContextMenu key={conversation.id} items={getMenuItems(conversation)}>
+        <div
+          onClick={() => editingId !== conversation.id && onSelect(conversation.id)}
+          className={`w-full px-3 py-2.5 text-left rounded-lg transition-all cursor-pointer group ${
+            conversation.id === currentConversationId
+              ? 'bg-primary/10 shadow-sm'
+              : 'hover:bg-secondary/40'
+          }`}
+        >
         {/* Edit mode */}
         {editingId === conversation.id ? (
           <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
@@ -254,61 +250,18 @@ export function ConversationList({
                 <PinIcon className="w-3 h-3 flex-shrink-0 text-muted-foreground/60" />
               )}
               <span className="text-sm truncate flex-1">
-                {conversation.title.slice(0, 20)}
-                {conversation.title.length > 20 && '...'}
+                {conversation.title}
               </span>
-              {/* Action buttons (on hover) */}
-              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">
-                {onTogglePin && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onTogglePin(conversation.id)
-                    }}
-                    className="p-1 hover:bg-primary/20 text-muted-foreground hover:text-primary rounded transition-colors"
-                    title={conversation.pinned ? t('Unpin') : t('Pin')}
-                  >
-                    <PinIcon className="w-3.5 h-3.5" />
-                  </button>
-                )}
-                {onRename && (
-                  <button
-                    onClick={(e) => handleStartEdit(e, conversation)}
-                    className="p-1 hover:bg-primary/20 text-muted-foreground hover:text-primary rounded transition-colors"
-                    title={t('Edit title')}
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                  </button>
-                )}
-                {onDelete && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onDelete(conversation.id)
-                    }}
-                    className="p-1 hover:bg-destructive/20 text-muted-foreground hover:text-destructive rounded transition-colors"
-                    title={t('Delete conversation')}
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
-                )}
-              </div>
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               {formatDate(conversation.updatedAt)}
             </p>
           </>
         )}
-      </div>
+        </div>
+      </ContextMenu>
     )
   }
-
-  // Context menu conversation
-  const contextConv = contextMenu ? getConversation(contextMenu.conversationId) : null
 
   return (
     <div
@@ -370,61 +323,6 @@ export function ConversationList({
         onMouseDown={handleMouseDown}
         title={t('Drag to resize width')}
       />
-
-      {/* Right-click context menu */}
-      {contextMenu && contextConv && (
-        <div
-          ref={contextMenuRef}
-          className="fixed z-50 min-w-[160px] bg-popover border border-border rounded-lg shadow-lg py-1 text-sm"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-        >
-          {/* Pin / Unpin */}
-          {onTogglePin && (
-            <button
-              className="w-full px-3 py-1.5 text-left hover:bg-secondary/60 flex items-center gap-2 transition-colors"
-              onClick={() => {
-                onTogglePin(contextConv.id)
-                setContextMenu(null)
-              }}
-            >
-              <PinIcon className="w-4 h-4" />
-              {contextConv.pinned ? t('Unpin') : t('Pin')}
-            </button>
-          )}
-          {/* Rename */}
-          {onRename && (
-            <button
-              className="w-full px-3 py-1.5 text-left hover:bg-secondary/60 flex items-center gap-2 transition-colors"
-              onClick={(e) => {
-                handleStartEdit(e, contextConv)
-              }}
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-              {t('Rename')}
-            </button>
-          )}
-          {/* Delete */}
-          {onDelete && (
-            <>
-              <div className="border-t border-border/40 my-1" />
-              <button
-                className="w-full px-3 py-1.5 text-left hover:bg-destructive/10 text-destructive flex items-center gap-2 transition-colors"
-                onClick={() => {
-                  onDelete(contextConv.id)
-                  setContextMenu(null)
-                }}
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-                {t('Delete')}
-              </button>
-            </>
-          )}
-        </div>
-      )}
     </div>
   )
 }

@@ -7,7 +7,7 @@
 
 import path from 'path'
 import fs from 'fs'
-import { getConfig } from '../config.service'
+import { getConfig, getClaudeConfigDir } from '../config.service'
 import { isAIBrowserTool } from '../ai-browser'
 import { activeSessions } from './session-manager'
 import { sendToRenderer } from './helpers'
@@ -21,6 +21,7 @@ export type ToolPermissionResult = {
   behavior: 'allow' | 'deny'
   updatedInput?: Record<string, unknown>
   message?: string
+  interrupt?: boolean  // When true, SDK aborts the current turn immediately
 }
 
 export type CanUseToolFn = (
@@ -67,18 +68,25 @@ export function createCanUseTool(
   const absoluteWorkDir = path.resolve(workDir)
 
   // Helper: send approval request and wait for user response
-  function askApproval(toolCall: ToolCall): Promise<ToolPermissionResult> {
+  function askApproval(toolCall: ToolCall, toolInput: Record<string, unknown>): Promise<ToolPermissionResult> {
     sendToRenderer('agent:tool-call', spaceId, conversationId, toolCall as unknown as Record<string, unknown>)
     const session = activeSessions.get(conversationId)
     if (!session) {
       return Promise.resolve({ behavior: 'deny' as const, message: 'Session not found' })
     }
     return new Promise((resolve) => {
-      session.pendingPermissionResolve = (approved: boolean) => {
+      session.pendingPermissionResolve = (approved: boolean, rejectMessage?: string) => {
+        // Check if this is a "give feedback" rejection (interrupt to stop the turn)
+        const isInterrupt = rejectMessage?.includes('[INTERRUPT]')
+        const cleanMessage = rejectMessage?.replace('[INTERRUPT]', '').trim()
         resolve(
           approved
-            ? { behavior: 'allow' as const }
-            : { behavior: 'deny' as const, message: 'User rejected the operation' }
+            ? { behavior: 'allow' as const, updatedInput: toolInput }
+            : {
+                behavior: 'deny' as const,
+                message: cleanMessage || 'User rejected the operation',
+                ...(isInterrupt ? { interrupt: true } : {})
+              }
         )
       }
     })
@@ -89,6 +97,54 @@ export function createCanUseTool(
     input: Record<string, unknown>,
     _options: { signal: AbortSignal }
   ): Promise<ToolPermissionResult> => {
+    // Plan mode: ExitPlanMode requires user approval with plan content
+    const session = activeSessions.get(conversationId)
+    if (session?.planModeEnabled && toolName === 'ExitPlanMode') {
+      console.log(`[Agent] Plan mode: ExitPlanMode requires user approval`)
+
+      // Read plan file content to show in approval UI
+      let planContent = ''
+      const planFilePath = input.planFilePath as string | undefined
+      if (planFilePath) {
+        try {
+          planContent = fs.readFileSync(planFilePath, 'utf-8')
+        } catch (e) {
+          console.log(`[Agent] Could not read plan file: ${planFilePath}`)
+        }
+      }
+      // Fallback: search for the most recent plan file in Project4's claude-config/plans directory
+      if (!planContent) {
+        try {
+          const plansDir = path.join(getClaudeConfigDir(), 'plans')
+          if (fs.existsSync(plansDir)) {
+            const files = fs.readdirSync(plansDir)
+              .filter(f => f.endsWith('.md'))
+              .map(f => ({ name: f, mtime: fs.statSync(path.join(plansDir, f)).mtimeMs }))
+              .sort((a, b) => b.mtime - a.mtime)
+            if (files.length > 0) {
+              planContent = fs.readFileSync(path.join(plansDir, files[0].name), 'utf-8')
+              console.log(`[Agent] Loaded plan from ${files[0].name}`)
+            }
+          }
+        } catch (e) {
+          console.log(`[Agent] Could not find plan files:`, e)
+        }
+      }
+
+      const description = planContent
+        ? `📋 AI 已完成规划，是否批准并开始执行？\n\n${planContent}`
+        : 'AI 已完成规划，是否批准并开始执行？'
+
+      return askApproval({
+        id: `tool-${Date.now()}`,
+        name: toolName,
+        status: 'waiting_approval',
+        input,
+        requiresApproval: true,
+        description
+      }, input)
+    }
+
     if (toolName === 'Read' && typeof input.pages === 'string' && input.pages.trim() === '') {
       const { pages, ...sanitizedInput } = input
       console.log('[Agent] Sanitized Read input by removing empty pages field')
@@ -124,7 +180,7 @@ export function createCanUseTool(
             input,
             requiresApproval: true,
             description: `Overwrite existing file: ${pathParam}`
-          })
+          }, input)
         }
       }
     }
@@ -147,7 +203,7 @@ export function createCanUseTool(
           input,
           requiresApproval: true,
           description: `Dangerous command: ${command}`
-        })
+        }, input)
       }
 
       if (permission === 'ask' && !config.permissions.trustMode) {
@@ -158,7 +214,7 @@ export function createCanUseTool(
           input,
           requiresApproval: true,
           description: `Execute command: ${command}`
-        })
+        }, input)
       }
     }
 
@@ -203,11 +259,11 @@ export function createCanUseTool(
     // AI Browser tools are always allowed (they run in sandboxed browser context)
     if (isAIBrowserTool(toolName)) {
       console.log(`[Agent] AI Browser tool allowed: ${toolName}`)
-      return { behavior: 'allow' as const }
+      return { behavior: 'allow' as const, updatedInput: input }
     }
 
     // Default: allow
-    return { behavior: 'allow' as const }
+    return { behavior: 'allow' as const, updatedInput: input }
   }
 }
 
@@ -218,10 +274,10 @@ export function createCanUseTool(
 /**
  * Handle tool approval from renderer for a specific conversation
  */
-export function handleToolApproval(conversationId: string, approved: boolean): void {
+export function handleToolApproval(conversationId: string, approved: boolean, rejectMessage?: string): void {
   const session = activeSessions.get(conversationId)
   if (session?.pendingPermissionResolve) {
-    session.pendingPermissionResolve(approved)
+    session.pendingPermissionResolve(approved, rejectMessage)
     session.pendingPermissionResolve = null
   }
 }

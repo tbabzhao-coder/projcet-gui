@@ -159,13 +159,20 @@ export async function checkLarkCliStatus(): Promise<LarkCliStatusInfo> {
   }
 
   try {
-    const result = await execLarkCli(['auth', 'status', '--format', 'json'])
+    // Note: lark-cli auth status outputs JSON to stdout by default (no --format flag)
+    const result = await execLarkCli(['auth', 'status'])
 
     if (result.exitCode === 0 && result.stdout) {
       try {
         const data = JSON.parse(result.stdout)
-        if (data.logged_in || data.valid || data.authenticated) {
+        // Check if user identity is logged in (not just bot)
+        // When only bot is available, identity is "bot" and note mentions "No user logged in"
+        if (data.identity === 'user' || data.identity === 'both' || data.logged_in || data.valid || data.authenticated) {
           return { status: 'auth_valid', config }
+        }
+        // Bot-only: app is configured but user hasn't logged in yet
+        if (data.identity === 'bot' || data.note?.includes('No user logged in')) {
+          return { status: 'auth_expired', config, error: '需要完成用户授权登录（扫码第二步）' }
         }
         return { status: 'auth_expired', config }
       } catch {
