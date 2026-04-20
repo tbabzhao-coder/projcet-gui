@@ -253,7 +253,7 @@ export function registerApiRoutes(app: Express, mainWindow: BrowserWindow | null
   // ===== Agent Routes =====
   app.post('/api/agent/message', async (req: Request, res: Response) => {
     const { spaceId, conversationId, message, resumeSessionId, images, thinkingEnabled, aiBrowserEnabled } = req.body
-    const result = await agentController.sendMessage(mainWindow, {
+    const result = await agentController.sendMessage({
       spaceId,
       conversationId,
       message,
@@ -301,7 +301,7 @@ export function registerApiRoutes(app: Express, mainWindow: BrowserWindow | null
 
   // Test MCP server connections
   app.post('/api/agent/test-mcp', async (req: Request, res: Response) => {
-    const result = await agentController.testMcpConnections(mainWindow)
+    const result = await agentController.testMcpConnections()
     res.json(result)
   })
 

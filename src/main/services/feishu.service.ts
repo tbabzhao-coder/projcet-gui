@@ -212,8 +212,7 @@ async function handleFeishuMessage(event: any): Promise<void> {
     createConversationWithId(spaceId, conversationId, `Feishu: ${text.substring(0, 30)}`)
 
     // Trigger the agent via sendMessage (same as desktop UI)
-    const mainWindow = getMainWindow()
-    await sendMessage(mainWindow, {
+    await sendMessage({
       spaceId,
       conversationId,
       message: text

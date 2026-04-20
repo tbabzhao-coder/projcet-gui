@@ -5,19 +5,17 @@
  * caching, broadcasting, and connection testing.
  */
 
-import { BrowserWindow } from 'electron'
 import { query as claudeQuery } from '@anthropic-ai/claude-agent-sdk'
 import { getConfig, getTempSpacePath } from '../config.service'
 import { ensureOpenAICompatRouter, encodeBackendConfig } from '../../openai-compat-router'
-import type { McpServerStatusInfo, MainWindowRef } from './types'
+import type { McpServerStatusInfo } from './types'
 import {
   getHeadlessElectronPath,
   getApiCredentials,
   getEnabledMcpServers,
   inferOpenAIWireApi,
-  broadcastToAllClients,
-  setMainWindow
 } from './helpers'
+import { emitAgentBroadcast } from './events'
 import { buildEnvWithBundledNode, getBundledPlaywrightBrowsersPath } from '../node-runtime.service'
 
 // ============================================
@@ -49,12 +47,20 @@ export function getLastMcpStatusUpdate(): number {
 /**
  * Broadcast MCP status to all renderers (global, not conversation-specific)
  */
-export function broadcastMcpStatus(mcpServers: Array<{ name: string; status: string }>): void {
-  // Convert to our status type
-  cachedMcpStatus = mcpServers.map(s => ({
-    name: s.name,
-    status: s.status as McpServerStatusInfo['status']
-  }))
+export function broadcastMcpStatus(mcpServers: Array<{ name: string; status: string }>, tools?: string[]): void {
+  // Convert to our status type, grouping tools by server name
+  cachedMcpStatus = mcpServers.map(s => {
+    const serverTools = tools
+      ? tools
+          .filter(t => t.startsWith(`mcp__${s.name}__`))
+          .map(t => t.replace(`mcp__${s.name}__`, ''))
+      : undefined
+    return {
+      name: s.name,
+      status: s.status as McpServerStatusInfo['status'],
+      ...(serverTools && serverTools.length > 0 ? { tools: serverTools } : {})
+    }
+  })
   lastMcpStatusUpdate = Date.now()
 
   const eventData = {
@@ -63,7 +69,7 @@ export function broadcastMcpStatus(mcpServers: Array<{ name: string; status: str
   }
 
   // Broadcast to all clients (Electron IPC + WebSocket)
-  broadcastToAllClients('agent:mcp-status', eventData)
+  emitAgentBroadcast('agent:mcp-status', eventData)
   console.log(`[Agent] Broadcast MCP status: ${cachedMcpStatus.length} servers`)
 }
 
@@ -78,16 +84,9 @@ let mcpTestInProgress = false
  * Test MCP connections manually
  * Starts a temporary SDK query just to get MCP status
  */
-export async function testMcpConnections(
-  mainWindow?: MainWindowRef
-): Promise<{ success: boolean; servers: McpServerStatusInfo[]; error?: string }> {
+export async function testMcpConnections(): Promise<{ success: boolean; servers: McpServerStatusInfo[]; error?: string }> {
   if (mcpTestInProgress) {
     return { success: false, servers: cachedMcpStatus, error: 'Test already in progress' }
-  }
-
-  // Set currentMainWindow if provided (for broadcasting status to renderer)
-  if (mainWindow) {
-    setMainWindow(mainWindow)
   }
 
   mcpTestInProgress = true
