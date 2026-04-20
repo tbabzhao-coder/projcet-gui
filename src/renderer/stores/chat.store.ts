@@ -21,7 +21,7 @@
 
 import { create } from 'zustand'
 import { api } from '../api'
-import type { Conversation, ConversationMeta, Message, ToolCall, Artifact, Thought, AgentEventBase, ImageAttachment, CompactInfo, CanvasContext } from '../types'
+import type { Conversation, ConversationMeta, Message, ToolCall, Artifact, Thought, TaskProgress, AgentEventBase, ImageAttachment, CompactInfo, CanvasContext } from '../types'
 import { canvasLifecycle } from '../services/canvas-lifecycle'
 
 // LRU cache size limit
@@ -146,6 +146,7 @@ interface ChatState {
     isToolInput?: boolean
     toolResult?: { output: string; isError: boolean; timestamp: string }
     isToolResult?: boolean
+    taskProgress?: TaskProgress
   }) => void
   handleAgentCompact: (data: AgentEventBase & { trigger: 'manual' | 'auto'; preTokens: number }) => void
 
@@ -1008,8 +1009,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   // Handle thought delta - incremental update to a streaming thought
   handleAgentThoughtDelta: (data) => {
-    const { conversationId, thoughtId, delta, content, toolInput, isComplete, isReady, isToolInput, toolResult, isToolResult } = data
-    // Don't log every delta to reduce console noise (only log on complete or toolResult)
+    const { conversationId, thoughtId, delta, content, toolInput, isComplete, isReady, isToolInput, toolResult, isToolResult, taskProgress } = data
+    // Don't log every delta to reduce console noise (only log on complete, toolResult, or taskProgress)
+    if (isComplete || isToolResult || taskProgress) {
+      console.log(`[ChatStore] handleAgentThoughtDelta [${conversationId}]: thought ${thoughtId} ${isToolResult ? 'toolResult merged' : taskProgress ? 'taskProgress' : 'complete'}`)
+    }
 
     set((state) => {
       const newSessions = new Map(state.sessions)
@@ -1028,7 +1032,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const thought = { ...newThoughts[thoughtIndex] }
 
       // Apply delta or content update
-      if (isToolResult && toolResult) {
+      if (taskProgress) {
+        // Task/Agent lifecycle update — update progress on the parent Task thought
+        thought.taskProgress = taskProgress
+      } else if (isToolResult && toolResult) {
         // Tool result merge - add result to tool_use thought
         thought.toolResult = toolResult
       } else if (isToolInput) {

@@ -26,6 +26,7 @@ import {
 } from './thought-utils'
 import { useSmartScroll } from '../../hooks/useSmartScroll'
 import { useLazyVisible } from '../../hooks/useLazyVisible'
+import { SubAgentTimeline } from './SubAgentTimeline'
 import type { Thought } from '../../types'
 import { useTranslation } from '../../i18n'
 
@@ -138,7 +139,17 @@ function TimerDisplay({ startTime, isThinking }: { startTime: number | null; isT
 }
 
 // Individual thought item (for non-special tools)
-const ThoughtItem = memo(function ThoughtItem({ thought, isLast }: { thought: Thought; isLast: boolean }) {
+const ThoughtItem = memo(function ThoughtItem({
+  thought,
+  isLast,
+  allThoughts,
+  isThinking
+}: {
+  thought: Thought;
+  isLast: boolean;
+  allThoughts?: Thought[];
+  isThinking?: boolean;
+}) {
   const [showRawJson, setShowRawJson] = useState(false)
   const [showResult, setShowResult] = useState(true)  // Tool result collapsed by default shows summary
   const [isContentExpanded, setIsContentExpanded] = useState(false)  // For thinking content expand
@@ -336,6 +347,16 @@ const ThoughtItem = memo(function ThoughtItem({ thought, isLast }: { thought: Th
             isError={thought.toolResult!.isError}
           />
         )}
+
+        {/* Sub-agent nested timeline for Task/Agent tool calls */}
+        {thought.type === 'tool_use' && (thought.toolName === 'Task' || thought.toolName === 'Agent') && allThoughts && (
+          <SubAgentTimeline
+            thoughts={allThoughts}
+            parentToolUseId={thought.id}
+            taskProgress={thought.taskProgress}
+            isThinking={isThinking ?? false}
+          />
+        )}
       </div>
     </div>
   )
@@ -386,12 +407,14 @@ export function ThoughtProcess({ thoughts, isThinking }: ThoughtProcessProps) {
     return parseTodoInput(latest.toolInput!)
   }, [thoughts])
 
-  // Filter thoughts for display (exclude TodoWrite, tool_result, and result)
+  // Filter thoughts for display (exclude TodoWrite, tool_result, result, and sub-agent thoughts)
   // tool_result is now merged into tool_use, no need to show separately
+  // Sub-agent thoughts (parentToolUseId set) are rendered nested inside their parent Task thought
   const displayThoughts = useMemo(() => {
     return thoughts.filter(t => {
       if (t.type === 'result') return false
       if (t.type === 'tool_result') return false  // Merged into tool_use
+      if (t.parentToolUseId) return false  // Sub-agent thoughts rendered via SubAgentTimeline
       // Exclude TodoWrite tool_use (shown separately at bottom)
       if (t.toolName === 'TodoWrite') return false
       return true
@@ -481,13 +504,18 @@ export function ThoughtProcess({ thoughts, isThinking }: ThoughtProcessProps) {
                 onScroll={handleScroll}
                 className={`px-4 pt-3 ${isMaximized ? 'max-h-[80vh]' : 'max-h-[300px]'} overflow-auto scrollbar-overlay transition-all duration-200`}
               >
-                {displayThoughts.map((thought, index) => (
-                  <ThoughtItem
-                    key={thought.id}
-                    thought={thought}
-                    isLast={index === displayThoughts.length - 1 && !latestTodos && !isThinking}
-                  />
-                ))}
+                {displayThoughts.map((thought, index) => {
+                  const isTaskThought = thought.type === 'tool_use' && (thought.toolName === 'Task' || thought.toolName === 'Agent')
+                  return (
+                    <ThoughtItem
+                      key={thought.id}
+                      thought={thought}
+                      isLast={index === displayThoughts.length - 1 && !latestTodos && !isThinking}
+                      allThoughts={isTaskThought ? thoughts : undefined}
+                      isThinking={isTaskThought ? isThinking : undefined}
+                    />
+                  )
+                })}
               </div>
             )}
 

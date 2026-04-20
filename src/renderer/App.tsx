@@ -19,7 +19,7 @@ import { SearchHighlightBar } from './components/search/SearchHighlightBar'
 import { OnboardingOverlay } from './components/onboarding'
 import { NotificationToast } from './components/notification/NotificationToast'
 import { api } from './api'
-import type { AgentEventBase, Thought, ToolCall, AppConfig } from './types'
+import type { AgentEventBase, Thought, TaskProgress, ToolCall, AppConfig } from './types'
 import { hasAnyAISource } from './types'
 
 // Lazy load heavy page components for better initial load performance
@@ -221,6 +221,9 @@ export default function App() {
         isComplete?: boolean
         isReady?: boolean
         isToolInput?: boolean
+        toolResult?: { output: string; isError: boolean; timestamp: string }
+        isToolResult?: boolean
+        taskProgress?: TaskProgress
       })
     })
 

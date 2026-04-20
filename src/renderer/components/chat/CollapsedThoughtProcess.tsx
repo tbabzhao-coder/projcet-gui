@@ -166,10 +166,12 @@ export function CollapsedThoughtProcess({ thoughts, defaultExpanded = false }: C
     return parseTodoInput(latest.toolInput!)
   }, [thoughts])
 
-  // Filter thoughts for display (exclude TodoWrite and its results)
+  // Filter thoughts for display (exclude TodoWrite, sub-agent thoughts, and results)
   const displayThoughts = useMemo(() => {
     return thoughts.filter(t => {
       if (t.type === 'result') return false
+      if (t.type === 'tool_result') return false
+      if (t.parentToolUseId) return false  // Sub-agent thoughts rendered via SubAgentTimeline
       if (t.toolName === 'TodoWrite') return false
       return true
     })
