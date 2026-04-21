@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { TodoCard, parseTodoInput } from '../tool/TodoCard'
 import { ToolResultViewer } from './tool-result'
+import { SubAgentTimeline } from './SubAgentTimeline'
 import {
   getThoughtIcon,
   getThoughtColor,
@@ -33,7 +34,7 @@ interface CollapsedThoughtProcessProps {
 
 
 // Single thought item in expanded view
-function ThoughtItem({ thought }: { thought: Thought }) {
+function ThoughtItem({ thought, allThoughts }: { thought: Thought; allThoughts?: Thought[] }) {
   const { t } = useTranslation()
   const [showRawJson, setShowRawJson] = useState(false)
   const [showResult, setShowResult] = useState(true)  // Default show result
@@ -146,6 +147,18 @@ function ThoughtItem({ thought }: { thought: Thought }) {
           />
         </div>
       )}
+
+      {/* Sub-agent nested timeline for Task/Agent tool calls */}
+      {thought.type === 'tool_use' && (thought.toolName === 'Task' || thought.toolName === 'Agent') && allThoughts && (
+        <div className="mt-1.5 ml-[22px]">
+          <SubAgentTimeline
+            thoughts={allThoughts}
+            parentToolUseId={thought.id}
+            taskProgress={thought.taskProgress}
+            isThinking={false}
+          />
+        </div>
+      )}
     </div>
   )
 }
@@ -233,9 +246,12 @@ export function CollapsedThoughtProcess({ thoughts, defaultExpanded = false }: C
           {/* Thought items */}
           {displayThoughts.length > 0 && (
             <div className={`${isMaximized ? 'max-h-[80vh]' : 'max-h-[300px]'} scrollbar-overlay px-3 transition-all duration-200`}>
-              {displayThoughts.map((thought) => (
-                <ThoughtItem key={thought.id} thought={thought} />
-              ))}
+              {displayThoughts.map((thought) => {
+                const isTaskThought = thought.type === 'tool_use' && (thought.toolName === 'Task' || thought.toolName === 'Agent')
+                return (
+                  <ThoughtItem key={thought.id} thought={thought} allThoughts={isTaskThought ? thoughts : undefined} />
+                )
+              })}
             </div>
           )}
 
