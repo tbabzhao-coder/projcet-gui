@@ -10,7 +10,7 @@ import fs from 'fs'
 import { getConfig, getClaudeConfigDir } from '../config.service'
 import { isAIBrowserTool } from '../ai-browser'
 import { activeSessions } from './session-manager'
-import { sendToRenderer } from './helpers'
+import { emitAgentEvent } from './events'
 import type { ToolCall } from './types'
 
 // ============================================
@@ -69,7 +69,7 @@ export function createCanUseTool(
 
   // Helper: send approval request and wait for user response
   function askApproval(toolCall: ToolCall, toolInput: Record<string, unknown>): Promise<ToolPermissionResult> {
-    sendToRenderer('agent:tool-call', spaceId, conversationId, toolCall as unknown as Record<string, unknown>)
+    emitAgentEvent('agent:tool-call', spaceId, conversationId, toolCall as unknown as Record<string, unknown>)
     const session = activeSessions.get(conversationId)
     if (!session) {
       return Promise.resolve({ behavior: 'deny' as const, message: 'Session not found' })
@@ -97,10 +97,10 @@ export function createCanUseTool(
     input: Record<string, unknown>,
     _options: { signal: AbortSignal }
   ): Promise<ToolPermissionResult> => {
-    // Plan mode: ExitPlanMode requires user approval with plan content
-    const session = activeSessions.get(conversationId)
-    if (session?.planModeEnabled && toolName === 'ExitPlanMode') {
-      console.log(`[Agent] Plan mode: ExitPlanMode requires user approval`)
+    // ExitPlanMode requires user approval with plan content
+    // Note: Plan mode detection removed - ExitPlanMode always requires approval
+    if (toolName === 'ExitPlanMode') {
+      console.log(`[Agent] ExitPlanMode requires user approval`)
 
       // Read plan file content to show in approval UI
       let planContent = ''
@@ -237,7 +237,7 @@ export function createCanUseTool(
         description: questions?.[0]?.question || 'Waiting for user response'
       }
 
-      sendToRenderer('agent:tool-call', spaceId, conversationId, toolCall as unknown as Record<string, unknown>)
+      emitAgentEvent('agent:tool-call', spaceId, conversationId, toolCall as unknown as Record<string, unknown>)
 
       // Wait for user answers using session-specific resolver
       const session = activeSessions.get(conversationId)

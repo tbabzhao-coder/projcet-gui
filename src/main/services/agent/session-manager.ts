@@ -507,6 +507,34 @@ export function unregisterActiveSession(conversationId: string): void {
   }
 }
 
+// ============================================
+// Pending Rebuild (for Consumer pattern)
+// ============================================
+
+/** Conversations that need session rebuild after current turn completes */
+const pendingRebuilds = new Set<string>()
+
+/**
+ * Mark a conversation for session rebuild after the current consumer turn completes.
+ * Called by config change handler when credentials change during an active turn.
+ */
+export function markPendingRebuild(conversationId: string): void {
+  pendingRebuilds.add(conversationId)
+}
+
+/**
+ * Check and consume a pending rebuild flag.
+ * Called by session-consumer after each turn to decide whether to break the loop.
+ * Returns true if a rebuild was pending (and clears the flag).
+ */
+export function consumePendingRebuild(conversationId: string): boolean {
+  if (pendingRebuilds.has(conversationId)) {
+    pendingRebuilds.delete(conversationId)
+    return true
+  }
+  return false
+}
+
 /**
  * Get an active session by conversation ID
  */

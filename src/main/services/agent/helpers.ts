@@ -7,18 +7,14 @@
  */
 
 import { createHash } from 'crypto'
-import { app, BrowserWindow } from 'electron'
+import { app } from 'electron'
 import { join, dirname } from 'path'
 import { existsSync, mkdirSync, symlinkSync, unlinkSync, lstatSync, readlinkSync, cpSync, rmSync, readdirSync, renameSync, writeFileSync, readFileSync } from 'fs'
 import { getConfig, getConfigPath, getTempSpacePath, getClaudeConfigDir } from '../config.service'
 import { getSpace } from '../space.service'
 import { getAISourceManager } from '../ai-sources'
-import { broadcastToAll, broadcastToWebSocket } from '../../http/websocket'
-import { onMainWindowChange } from '../window.service'
-// Feishu: DISABLED — replaced by lark-cli integration
-// import { onAgentEvent as onFeishuAgentEvent } from '../feishu.service'
 import { getLarkCliConfig } from '../lark-cli.service'
-import type { ApiCredentials, MainWindowRef } from './types'
+import type { ApiCredentials } from './types'
 
 // ============================================
 // Headless Electron Path Management
@@ -387,89 +383,6 @@ The Read tool has a 256KB file size limit. If a Read call fails with "exceeds ma
 - Never send "pages" as an empty string. If no page range is needed, omit the "pages" field entirely.
 </large_file_handling>
 `
-}
-
-// ============================================
-// Renderer Communication
-// ============================================
-
-// Current main window reference
-let currentMainWindow: MainWindowRef = null
-
-// Subscribe to window changes from window.service
-// This ensures currentMainWindow is always in sync with the actual window
-onMainWindowChange((window) => {
-  currentMainWindow = window
-  console.log(`[Agent/Helpers] Main window ${window ? 'updated' : 'cleared'}`)
-})
-
-/**
- * Set the current main window reference (legacy compatibility)
- * Now uses window.service subscription instead
- * @deprecated Use window.service.setMainWindow() instead
- */
-export function setMainWindow(window: MainWindowRef): void {
-  // This function is kept for backward compatibility
-  // The actual window reference is managed by window.service subscription above
-  console.log(`[Agent/Helpers] setMainWindow called (legacy) - window.service subscription is managing the reference`)
-}
-
-/**
- * Get the current main window reference
- */
-export function getMainWindow(): MainWindowRef {
-  return currentMainWindow
-}
-
-/**
- * Send event to renderer with session identifiers
- * Also broadcasts to WebSocket for remote clients
- */
-export function sendToRenderer(
-  channel: string,
-  spaceId: string,
-  conversationId: string,
-  data: Record<string, unknown>
-): void {
-  // Always include spaceId and conversationId in event data
-  const eventData = { ...data, spaceId, conversationId }
-
-  // 1. Send to Electron renderer via IPC
-  if (currentMainWindow && !currentMainWindow.isDestroyed()) {
-    currentMainWindow.webContents.send(channel, eventData)
-    console.log(`[Agent] Sent to renderer: ${channel}`, JSON.stringify(eventData).substring(0, 200))
-  }
-
-  // 2. Broadcast to remote WebSocket clients
-  try {
-    broadcastToWebSocket(channel, eventData)
-  } catch (error) {
-    // WebSocket module might not be initialized yet, ignore
-  }
-
-  // 3. Forward to Feishu service — DISABLED, replaced by lark-cli
-  // try {
-  //   onFeishuAgentEvent(channel, conversationId, eventData)
-  // } catch (error) {
-  //   // Feishu module might not be initialized yet, ignore
-  // }
-}
-
-/**
- * Broadcast event to all clients (global event, not conversation-scoped)
- */
-export function broadcastToAllClients(channel: string, data: Record<string, unknown>): void {
-  // 1. Send to Electron renderer via IPC (global event)
-  if (currentMainWindow && !currentMainWindow.isDestroyed()) {
-    currentMainWindow.webContents.send(channel, data)
-  }
-
-  // 2. Broadcast to remote WebSocket clients
-  try {
-    broadcastToAll(channel, data)
-  } catch (error) {
-    // WebSocket module might not be initialized yet, ignore
-  }
 }
 
 // ============================================
