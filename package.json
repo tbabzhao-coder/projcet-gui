@@ -62,7 +62,7 @@
     "i18n": "npm run i18n:extract && npm run i18n:translate"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.1.76",
+    "@anthropic-ai/claude-agent-sdk": "0.2.81",
     "@anthropic-ai/claude-code": "latest",
     "@anthropic-ai/sdk": "latest",
     "@codemirror/commands": "^6.10.1",
@@ -108,7 +108,9 @@
     "i18next": "^25.7.4",
     "ignore": "^7.0.5",
     "lucide-react": "^0.555.0",
+    "nodemailer": "^8.0.5",
     "pdf-tools-mcp": "^0.3.5",
+    "proxy-agent": "^8.0.1",
     "qrcode": "^1.5.4",
     "quick-chart-mcp": "^1.0.14",
     "react": "^18.2.0",
@@ -132,6 +134,7 @@
     "@playwright/test": "1.59.0-alpha-1769364499000",
     "@types/express": "^5.0.5",
     "@types/node": "^20.10.0",
+    "@types/nodemailer": "^8.0.0",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",

@@ -1,0 +1,40 @@
+---
+description: Cross-platform compatibility rule - ensure all code changes work on both Windows and macOS
+alwaysApply: true
+---
+
+# Cross-Platform Compatibility (Windows + macOS)
+
+This is an Electron desktop app that ships on both Windows and macOS. Every code change MUST consider both platforms.
+
+## Key Differences to Watch
+
+### File System
+- Path separators: use `path.join()` / `path.resolve()`, never hardcode `/` or `\`
+- `cpSync`, `rmSync`, `readdirSync` are 5-10x slower on Windows — avoid on the main thread when possible, or use caching/lazy execution
+- File permissions: Windows has no Unix-style chmod; `fs.accessSync` behavior differs
+- Symlinks: require elevated privileges on Windows; prefer `cpSync` over `symlinkSync`
+
+### Process & Shell
+- Windows uses Git Bash (not native bash); check `CLAUDE_CODE_GIT_BASH_PATH`
+- `process.platform === 'win32'` for Windows-specific branches
+- Environment variables are case-insensitive on Windows, case-sensitive on macOS
+- `spawn` / `exec`: use `shell: true` on Windows for commands that need a shell
+
+### Electron Main Process
+- Synchronous file I/O on main thread blocks the entire UI on both platforms, but is significantly worse on Windows — prefer async or defer to `sendMessage` time
+- `app.getPath()` returns different base paths per OS
+- Tray icon, dock behavior, and native dialogs differ
+
+### UI / Renderer
+- Font rendering and sizes differ across platforms
+- Keyboard shortcuts: use `Cmd` on macOS, `Ctrl` on Windows (check `process.platform` or `navigator.platform`)
+- Window frame and title bar behavior differ (especially frameless windows)
+
+## Checklist for Every Change
+
+1. If touching file I/O: will this path work on Windows? Is `path.join` used?
+2. If touching shell/process: does this work without Unix bash? Is Git Bash handled?
+3. If adding sync file ops to main thread: will this freeze Windows UI? Can it be deferred?
+4. If adding keyboard shortcuts: are both Cmd and Ctrl handled?
+5. If changing system paths: tested with `app.getPath()` on both platforms?

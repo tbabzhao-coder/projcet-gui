@@ -32,9 +32,10 @@ Object.assign(console, log.functions)
 // These occur when SDK child processes are terminated during app shutdown
 // Especially common in E2E tests when app is forcefully closed
 process.on('uncaughtException', (error) => {
-  // Ignore EPIPE errors during shutdown (common with SDK child processes)
+  // Silently ignore EPIPE errors (common with SDK child processes)
+  // IMPORTANT: Do NOT use console.log/warn here — console is replaced by electron-log
+  // which writes to stdout. If stdout pipe is broken, logging triggers another EPIPE → infinite loop.
   if (error.message?.includes('EPIPE')) {
-    console.warn('[Main] Ignored EPIPE error during shutdown')
     return
   }
   // Re-throw other errors to show the default Electron error dialog

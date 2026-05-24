@@ -5,8 +5,6 @@
  * This file has no dependencies and is imported by all other agent modules.
  */
 
-import { BrowserWindow } from 'electron'
-
 // ============================================
 // API Credentials
 // ============================================
@@ -19,11 +17,18 @@ export interface ApiCredentials {
   baseUrl: string
   apiKey: string
   model: string
+  displayModel?: string
   provider: 'anthropic' | 'openai' | 'oauth'
   /** Custom headers for OAuth providers */
   customHeaders?: Record<string, string>
-  /** API type for OpenAI compatible providers */
-  apiType?: 'chat_completions' | 'responses'
+  /** API type for the backend provider */
+  apiType?: 'chat_completions' | 'responses' | 'anthropic_passthrough' | 'kiro'
+  /** Force streaming mode (for providers that only support streaming) */
+  forceStream?: boolean
+  /** Filter sensitive content from messages (e.g., GitHub URLs) */
+  filterContent?: boolean
+  /** Provider adapter ID for request/response transformations */
+  adapterId?: string
 }
 
 // ============================================
@@ -114,6 +119,7 @@ export interface Thought {
   toolInput?: Record<string, unknown>
   toolOutput?: string
   isError?: boolean
+  errorCode?: string  // Original SDK error code (rate_limit, authentication_failed, etc.)
   duration?: number
   // For streaming state (real-time updates)
   isStreaming?: boolean  // True while content is being streamed
@@ -124,6 +130,25 @@ export interface Thought {
     isError: boolean
     timestamp: string
   }
+  // Sub-agent support: links this thought to a parent Task tool_use
+  // Matches SDK's parent_tool_use_id — null/undefined for main agent thoughts
+  parentToolUseId?: string
+  // Task/Agent tool progress (updated via task_started/task_progress/task_notification)
+  taskProgress?: TaskProgress
+}
+
+/**
+ * Progress tracking for a Task/Agent tool_use thought.
+ * Updated in real-time via SDK task lifecycle events.
+ */
+export interface TaskProgress {
+  taskId: string
+  status: 'running' | 'completed' | 'failed' | 'stopped'
+  lastToolName?: string
+  toolCount: number
+  durationMs: number
+  summary?: string
+  totalTokens?: number
 }
 
 // ============================================
@@ -135,10 +160,14 @@ export interface Thought {
  * Used to track in-flight requests and accumulated thoughts
  */
 export interface SessionState {
+  /** Project4-internal signal to break stream-processor's consumption loop.
+   *  Does NOT propagate to the CC subprocess — use session.interrupt() for that. */
   abortController: AbortController
   spaceId: string
   conversationId: string
-  pendingPermissionResolve: ((approved: boolean) => void) | null
+  /** Resolve callback for pending tool permission request */
+  pendingPermissionResolve: ((approved: boolean, rejectMessage?: string) => void) | null
+  /** Resolve callback for pending AskUserQuestion request */
   pendingQuestionResolve: ((answers: Record<string, string>) => void) | null
   thoughts: Thought[]  // Backend accumulates thoughts (Single Source of Truth)
 }
@@ -167,13 +196,15 @@ export type V2SDKSession = {
 /**
  * Session configuration that requires session rebuild when changed
  * These are "process-level" parameters fixed at Claude Code subprocess startup
+ *
+ * Note: model changes are handled via credentialsGeneration in config.service
+ * (model is part of the aiSources signature), not through SessionConfig.
  */
 export interface SessionConfig {
   aiBrowserEnabled: boolean
   skillsHash?: string  // Hash of enabled skills for rebuild detection
   credentialsHash?: string  // Hash of baseUrl+apiKey so session is rebuilt when API config changes
-  // model is now dynamic, no rebuild needed
-  // thinkingEnabled is now dynamic, no rebuild needed
+  // thinkingEnabled is dynamic via setMaxThinkingTokens, no rebuild needed
 }
 
 /**
@@ -187,6 +218,9 @@ export interface V2SessionInfo {
   lastUsedAt: number
   // Track config at session creation time for rebuild detection
   config: SessionConfig
+  // Credentials generation at session creation time
+  // Used to detect stale credentials (session created before config change)
+  credentialsGeneration: number
 }
 
 // ============================================
@@ -204,6 +238,8 @@ export interface McpServerStatusInfo {
     version: string
   }
   error?: string
+  /** Short tool names provided by this server (without mcp__ prefix) */
+  tools?: string[]
 }
 
 // ============================================
@@ -225,12 +261,3 @@ export interface SingleCallUsage {
   cacheReadTokens: number
   cacheCreationTokens: number
 }
-
-// ============================================
-// Renderer Communication
-// ============================================
-
-/**
- * Main window reference for IPC communication
- */
-export type MainWindowRef = BrowserWindow | null

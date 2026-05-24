@@ -1,13 +1,13 @@
 /**
- * APA Recorder Service - 三重录制服务
- * 使用 playwright codegen 启动带录制的浏览器，同时开启 JS + HAR + 截图录制
+ * APA Recorder Service
+ * 使用 playwright codegen 启动带录制的浏览器，生成 JS 脚本 + HAR + 登录态
  */
 
 import { spawn, ChildProcess } from 'child_process'
 import { getBundledNodeExecutable, getBundledPlaywrightBrowsersPath } from './node-runtime.service'
 import { join } from 'path'
-import { existsSync, mkdirSync, readFileSync, rmSync, readdirSync } from 'fs'
-import { tmpdir, homedir } from 'os'
+import { existsSync, mkdirSync, readFileSync, copyFileSync, rmSync, readdirSync } from 'fs'
+import { homedir } from 'os'
 import { app } from 'electron'
 import { sendToRenderer } from './window.service'
 
@@ -17,6 +17,7 @@ import { sendToRenderer } from './window.service'
 
 export interface RecordingOptions {
   url?: string
+  workDir?: string
 }
 
 export interface ApiCall {
@@ -55,9 +56,10 @@ interface HARFile {
 export interface RecordingResult {
   script: string
   har: HARFile
-  screenshots: string[]
+  storageSaved: boolean
   apiCalls: ApiCall[]
-  tmpDir: string
+  recordingDir: string
+  sessionDir: string | null
 }
 
 // ============================================================================
@@ -65,7 +67,7 @@ export interface RecordingResult {
 // ============================================================================
 
 let activeRecordingProcess: ChildProcess | null = null
-let activeRecordingTmpDir: string | null = null
+let activeRecordingDir: string | null = null
 
 // ============================================================================
 // Helpers
@@ -171,7 +173,18 @@ function extractApiCalls(har: HARFile): ApiCall[] {
 // ============================================================================
 
 /**
- * 启动三重录制（playwright codegen + HAR + 截图）
+ * 从 URL 中提取 hostname，用于 session 隔离
+ */
+function extractHostname(url: string): string | null {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 启动录制（playwright codegen + HAR + 登录态持久化）
  */
 export async function startRecording(options: RecordingOptions): Promise<RecordingResult> {
   if (activeRecordingProcess) {
@@ -185,30 +198,45 @@ export async function startRecording(options: RecordingOptions): Promise<Recordi
     throw new Error('未找到 Playwright CLI，请确保已安装 playwright')
   }
 
-  // 创建临时目录
-  const recordingTmpDir = join(tmpdir(), `apa-recording-${Date.now()}`)
-  mkdirSync(recordingTmpDir, { recursive: true })
-  activeRecordingTmpDir = recordingTmpDir
+  // 录制产物保存在工作目录的 .apa-recordings/ 下，无 workDir 时统一放 ~/.project4/ 下
+  const baseDir = options.workDir || join(homedir(), '.project4')
+  const recordingDir = join(baseDir, '.apa-recordings', `recording-${Date.now()}`)
+  mkdirSync(recordingDir, { recursive: true })
+  activeRecordingDir = recordingDir
 
-  const scriptPath = join(recordingTmpDir, 'recording.js')
-  const harPath = join(recordingTmpDir, 'recording.har')
+  const scriptPath = join(recordingDir, 'recording.js')
+  const harPath = join(recordingDir, 'recording.har')
+  const storagePath = join(recordingDir, 'storage.json')
+
+  // Session 隔离：按 hostname 分目录
+  const hostname = options.url ? extractHostname(options.url) : null
+  const sessionDir = hostname ? getSessionDir(hostname) : null
+  const existingStoragePath = sessionDir ? join(sessionDir, 'storage.json') : null
 
   console.log('[APA Recorder] Starting recording...')
   console.log('[APA Recorder] Node:', node)
   console.log('[APA Recorder] Playwright CLI:', playwrightCli)
-  console.log('[APA Recorder] Tmp dir:', recordingTmpDir)
+  console.log('[APA Recorder] Recording dir:', recordingDir)
+  if (sessionDir) {
+    console.log('[APA Recorder] Session dir:', sessionDir)
+  }
 
-  sendToRenderer('apa:recording-started', { tmpDir: recordingTmpDir })
+  sendToRenderer('apa:recording-started', { recordingDir, sessionDir })
 
-  // 构建 playwright codegen 参数
   const args = [
     playwrightCli,
     'codegen',
     '--output', scriptPath,
     '--save-har', harPath,
-    '--browser', 'chromium',
+    '--save-storage', storagePath,
     '--viewport-size', '1280,720',
   ]
+
+  // 如果有已保存的登录态，自动加载（避免重复登录）
+  if (existingStoragePath && existsSync(existingStoragePath)) {
+    args.push('--load-storage', existingStoragePath)
+    console.log('[APA Recorder] Loading existing session:', existingStoragePath)
+  }
 
   if (options.url) {
     args.push(options.url)
@@ -225,7 +253,6 @@ export async function startRecording(options: RecordingOptions): Promise<Recordi
 
   activeRecordingProcess = proc
 
-  // 监听进程输出
   proc.stdout?.on('data', (data) => {
     const message = data.toString()
     console.log('[APA Recorder] stdout:', message)
@@ -241,12 +268,10 @@ export async function startRecording(options: RecordingOptions): Promise<Recordi
   return new Promise((resolve, reject) => {
     proc.on('close', (code) => {
       activeRecordingProcess = null
-      activeRecordingTmpDir = null
+      activeRecordingDir = null
 
       console.log('[APA Recorder] Process exited with code:', code)
 
-      // codegen 正常退出（用户关闭浏览器）code 可能是 0 或 null
-      // 只要产物文件存在就算成功
       const scriptExists = existsSync(scriptPath)
       const harExists = existsSync(harPath)
 
@@ -257,20 +282,32 @@ export async function startRecording(options: RecordingOptions): Promise<Recordi
       }
 
       try {
-        // 读取产物
         const script = scriptExists ? readFileSync(scriptPath, 'utf-8') : ''
         const harContent = harExists ? readFileSync(harPath, 'utf-8') : '{"log":{"entries":[]}}'
         const har: HARFile = JSON.parse(harContent)
-
-        // 从 HAR 中提取关键接口调用
         const apiCalls = extractApiCalls(har)
+
+        // 录制完成后将 storage.json 复制到 session 目录（持久化登录态）
+        let storageSaved = false
+        if (existsSync(storagePath)) {
+          if (sessionDir) {
+            try {
+              copyFileSync(storagePath, join(sessionDir, 'storage.json'))
+              storageSaved = true
+              console.log('[APA Recorder] Session saved to:', sessionDir)
+            } catch (copyErr) {
+              console.warn('[APA Recorder] Failed to save session:', copyErr)
+            }
+          }
+        }
 
         const result: RecordingResult = {
           script,
           har,
-          screenshots: [],
+          storageSaved,
           apiCalls,
-          tmpDir: recordingTmpDir,
+          recordingDir,
+          sessionDir,
         }
 
         console.log('[APA Recorder] Recording complete. Script length:', script.length, 'API calls:', apiCalls.length)
@@ -286,7 +323,7 @@ export async function startRecording(options: RecordingOptions): Promise<Recordi
 
     proc.on('error', (err) => {
       activeRecordingProcess = null
-      activeRecordingTmpDir = null
+      activeRecordingDir = null
       console.error('[APA Recorder] Process error:', err)
       sendToRenderer('apa:recording-stopped', { success: false, error: err.message })
       reject(err)
@@ -300,9 +337,17 @@ export async function startRecording(options: RecordingOptions): Promise<Recordi
 export function stopRecording(): void {
   if (activeRecordingProcess) {
     console.log('[APA Recorder] Stopping recording...')
-    activeRecordingProcess.kill('SIGTERM')
+    if (process.platform === 'win32') {
+      // Windows 不支持 SIGTERM，用 taskkill 终止进程树
+      const pid = activeRecordingProcess.pid
+      if (pid) {
+        spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore' })
+      }
+    } else {
+      activeRecordingProcess.kill('SIGTERM')
+    }
     activeRecordingProcess = null
-    activeRecordingTmpDir = null
+    activeRecordingDir = null
   }
 }
 
@@ -323,24 +368,12 @@ export function isRecording(): boolean {
 }
 
 /**
- * 清理录制临时文件
+ * 清理旧版残留在 tmpdir 下的录制目录（向后兼容，启动时调用）
+ * 新版录制产物保存在 workDir/.apa-recordings/ 下，由用户管理。
  */
-export function cleanupRecordingTmpDir(tmpDir: string): void {
+export function cleanupLegacyRecordingDirs(): void {
   try {
-    if (existsSync(tmpDir)) {
-      rmSync(tmpDir, { recursive: true, force: true })
-      console.log('[APA Recorder] Cleaned up tmp dir:', tmpDir)
-    }
-  } catch (err) {
-    console.warn('[APA Recorder] Failed to cleanup tmp dir:', tmpDir, err)
-  }
-}
-
-/**
- * 清理所有旧的录制临时文件（启动时调用）
- */
-export function cleanupOldRecordingTmpDirs(): void {
-  try {
+    const { tmpdir } = require('os')
     const tmp = tmpdir()
     const entries = readdirSync(tmp)
 
@@ -351,16 +384,16 @@ export function cleanupOldRecordingTmpDirs(): void {
         try {
           rmSync(fullPath, { recursive: true, force: true })
           cleaned++
-        } catch (err) {
-          // Ignore errors for individual dirs (might be in use)
+        } catch (_) {
+          // Ignore — might be in use by another process
         }
       }
     }
 
     if (cleaned > 0) {
-      console.log(`[APA Recorder] Cleaned up ${cleaned} old recording tmp dirs`)
+      console.log(`[APA Recorder] Cleaned up ${cleaned} legacy recording dirs from tmpdir`)
     }
   } catch (err) {
-    console.warn('[APA Recorder] Failed to cleanup old tmp dirs:', err)
+    console.warn('[APA Recorder] Failed to cleanup legacy dirs:', err)
   }
 }

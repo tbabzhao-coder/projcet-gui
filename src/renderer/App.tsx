@@ -10,14 +10,16 @@ import { initAIBrowserStoreListeners } from './stores/ai-browser.store'
 import { initPerfStoreListeners } from './stores/perf.store'
 import { useSpaceStore } from './stores/space.store'
 import { useSearchStore } from './stores/search.store'
+import { useNotificationStore } from './stores/notification.store'
 import { SplashScreen } from './components/splash/SplashScreen'
 import { SetupFlow } from './components/setup/SetupFlow'
 import { GitBashSetup } from './components/setup/GitBashSetup'
 import { SearchPanel } from './components/search/SearchPanel'
 import { SearchHighlightBar } from './components/search/SearchHighlightBar'
 import { OnboardingOverlay } from './components/onboarding'
+import { NotificationToast } from './components/notification/NotificationToast'
 import { api } from './api'
-import type { AgentEventBase, Thought, ToolCall, AppConfig } from './types'
+import type { AgentEventBase, Thought, TaskProgress, ToolCall, AppConfig } from './types'
 import { hasAnyAISource } from './types'
 
 // Lazy load heavy page components for better initial load performance
@@ -87,9 +89,21 @@ export default function App() {
   } = useChatStore()
   const { initialize: initializeOnboarding } = useOnboardingStore()
   const { isSearchOpen, closeSearch, isHighlightBarVisible, hideHighlightBar, goToPreviousResult, goToNextResult, openSearch } = useSearchStore()
+  const showToast = useNotificationStore((s) => s.show)
 
   // For search result navigation
   const { spaces, project4Space, setCurrentSpace: setSpaceStoreCurrentSpace } = useSpaceStore()
+
+  // Register in-app toast listener (notification:toast from main process)
+  useEffect(() => {
+    const unsub = api.onNotificationToast((data) => {
+      const { title, body, variant, duration } = data as {
+        title: string; body?: string; variant?: 'default' | 'success' | 'warning' | 'error'; duration?: number
+      }
+      showToast({ title, body, variant: variant ?? 'default', duration: duration ?? 6000 })
+    })
+    return unsub
+  }, [showToast])
 
   // Initialize app on mount - wait for backend extended services to be ready
   // Uses Pull+Push pattern for reliable initialization:
@@ -207,6 +221,9 @@ export default function App() {
         isComplete?: boolean
         isReady?: boolean
         isToolInput?: boolean
+        toolResult?: { output: string; isError: boolean; timestamp: string }
+        isToolResult?: boolean
+        taskProgress?: TaskProgress
       })
     })
 
@@ -561,6 +578,8 @@ export default function App() {
       <SearchHighlightBar />
       {/* Onboarding overlay - renders on top of everything */}
       <OnboardingOverlay />
+      {/* Unified in-app toast notifications */}
+      <NotificationToast />
     </div>
   )
 }

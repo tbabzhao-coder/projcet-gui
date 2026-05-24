@@ -32,7 +32,7 @@ export async function stopGeneration(conversationId?: string): Promise<void> {
       const v2Session = v2Sessions.get(conversationId)
       if (v2Session) {
         try {
-          await (v2Session.session as any).interrupt()
+          await v2Session.session.interrupt()
           console.log(`[Agent] V2 session interrupted, draining stale messages...`)
 
           // Drain stale messages until we hit the result
@@ -57,7 +57,7 @@ export async function stopGeneration(conversationId?: string): Promise<void> {
       const v2Session = v2Sessions.get(convId)
       if (v2Session) {
         try {
-          await (v2Session.session as any).interrupt()
+          await v2Session.session.interrupt()
         } catch (e) {
           console.error(`[Agent] Failed to interrupt V2 session ${convId}:`, e)
         }

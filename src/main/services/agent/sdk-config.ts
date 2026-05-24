@@ -275,14 +275,23 @@ export function buildSdkEnv(params: SdkEnvParams): Record<string, string | numbe
       ? { CLAUDE_CODE_GIT_BASH_PATH: process.env.CLAUDE_CODE_GIT_BASH_PATH }
       : {}),
 
-    // Localhost bypasses proxy (for OpenAI compat router)
-    NO_PROXY: 'localhost,127.0.0.1',
-    no_proxy: 'localhost,127.0.0.1',
+    // Bypass proxy for localhost (OpenAI compat router) and Feishu/Lark domains
+    // Local proxy tools (Clash, Surge, etc.) often block or MITM Feishu API requests,
+    // causing Forbidden or TLS certificate errors for lark-cli (Go binary)
+    NO_PROXY: 'localhost,127.0.0.1,*.feishu.cn,*.larksuite.com,*.larkoffice.com',
+    no_proxy: 'localhost,127.0.0.1,*.feishu.cn,*.larksuite.com,*.larkoffice.com',
+    // Tell lark-cli to skip proxy detection entirely
+    LARK_CLI_NO_PROXY: '1',
 
     // Disable non-essential traffic
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
     DISABLE_TELEMETRY: '1',
     DISABLE_COST_WARNINGS: '1',
+
+    // Increase file read and MCP output token limits (default is 25000 tokens / ~256KB)
+    // Allows AI to read larger files (e.g. HAR recordings, large JSON) without hitting token limits
+    CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS: '80000',
+    MAX_MCP_OUTPUT_TOKENS: '80000',
 
     // Playwright: use bundled browsers if available
     ...(getBundledPlaywrightBrowsersPath()

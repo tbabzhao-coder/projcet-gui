@@ -778,6 +778,8 @@ interface AppConfig {
     appSecret: string
     domain: 'feishu' | 'lark'
   }
+  // Notification channels (external push: email, wecom, dingtalk, feishu, webhook)
+  notificationChannels?: import('../../shared/types/notification-channels').NotificationChannelsConfig
 }
 
 // MCP server configuration types

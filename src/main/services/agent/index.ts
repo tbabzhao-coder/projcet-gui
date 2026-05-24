@@ -5,18 +5,17 @@
  * It manages V2 Sessions with Claude Code SDK, handles message streaming,
  * tool permissions, and MCP server connections.
  *
- * The public API is designed to match the original agent.service.ts exports
- * for seamless migration.
- *
  * Module Structure:
- * - types.ts          - Type definitions
- * - helpers.ts        - Utility functions
- * - session-manager.ts - V2 Session lifecycle management
- * - mcp-manager.ts    - MCP server status management
+ * - types.ts            - Type definitions (no dependencies)
+ * - events.ts           - Event system (decoupled from BrowserWindow)
+ * - constants.ts        - Stream processing constants
+ * - helpers.ts          - Utility functions
+ * - session-manager.ts  - V2 Session lifecycle management
+ * - mcp-manager.ts      - MCP server status management
  * - permission-handler.ts - Tool permission handling
- * - message-utils.ts  - Message building and parsing
- * - send-message.ts   - Core message sending logic
- * - control.ts        - Generation control (stop, status)
+ * - message-utils.ts    - Message building and parsing
+ * - send-message.ts     - Core message sending logic
+ * - control.ts          - Generation control (stop, status)
  */
 
 // ============================================
@@ -32,6 +31,7 @@ export type {
   ToolCall,
   ThoughtType,
   Thought,
+  TaskProgress,
   SessionState,
   V2SDKSession,
   SessionConfig,
@@ -39,8 +39,25 @@ export type {
   McpServerStatusInfo,
   TokenUsage,
   SingleCallUsage,
-  MainWindowRef
 } from './types'
+
+// ============================================
+// Event System
+// ============================================
+
+export type { AgentEvent, AgentBroadcastEvent } from './events'
+export {
+  onAgentEvent,
+  onAgentBroadcast,
+  emitAgentEvent,
+  emitAgentBroadcast
+} from './events'
+
+// ============================================
+// Constants
+// ============================================
+
+export { TRANSPARENT_TOOLS } from './constants'
 
 // ============================================
 // Core Functions
@@ -84,6 +101,33 @@ export {
 } from './mcp-manager'
 
 // ============================================
+// Session Consumer (REPL pattern)
+// ============================================
+
+export { startConsumer } from './session-consumer'
+export type { ConsumerHandle } from './session-consumer'
+
+// ============================================
+// Stream Processing
+// ============================================
+
+export { processStream } from './stream-processor'
+export type { StreamCallbacks, StreamResult, ProcessStreamParams } from './stream-processor'
+
+// ============================================
+// Sub-Agent Support
+// ============================================
+
+export { hasActiveTeamTasks } from './subagent-handler'
+export { PREDEFINED_AGENTS } from './agents'
+
+// ============================================
+// Message Injection
+// ============================================
+
+export { injectMessage } from './inject-message'
+
+// ============================================
 // Re-exports for Internal Use
 // ============================================
 
@@ -91,7 +135,7 @@ export {
 // during the transition period
 
 export { createCanUseTool } from './permission-handler'
-export { getWorkingDir, getApiCredentials, sendToRenderer, syncSkillsToConfigDir, markSkillsDirty, calculateSkillsHash, calculateCredentialsHash } from './helpers'
+export { getWorkingDir, getApiCredentials, syncSkillsToConfigDir, markSkillsDirty, calculateSkillsHash, calculateCredentialsHash } from './helpers'
 export { resolveCredentialsForSdk, buildBaseSdkOptions, ensureClaudeConfigSettings } from './sdk-config'
 export { parseSDKMessage, buildMessageContent, formatCanvasContext } from './message-utils'
 export { getOrCreateV2Session, activeSessions, v2Sessions } from './session-manager'

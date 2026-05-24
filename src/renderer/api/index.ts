@@ -374,6 +374,7 @@ export const api = {
     }>
     aiBrowserEnabled?: boolean  // Enable AI Browser tools
     thinkingEnabled?: boolean  // Enable extended thinking mode
+    planModeEnabled?: boolean  // Enable plan mode
     canvasContext?: {  // Canvas context for AI awareness
       isOpen: boolean
       tabCount: number
@@ -417,11 +418,11 @@ export const api = {
     return httpRequest('POST', '/api/agent/approve', { conversationId })
   },
 
-  rejectTool: async (conversationId: string): Promise<ApiResponse> => {
+  rejectTool: async (conversationId: string, rejectMessage?: string): Promise<ApiResponse> => {
     if (isElectron()) {
-      return window.project4.rejectTool(conversationId)
+      return window.project4.rejectTool(conversationId, rejectMessage)
     }
-    return httpRequest('POST', '/api/agent/reject', { conversationId })
+    return httpRequest('POST', '/api/agent/reject', { conversationId, rejectMessage })
   },
 
   answerQuestion: async (conversationId: string, answers: Record<string, string>): Promise<ApiResponse> => {
@@ -1266,7 +1267,7 @@ export const api = {
   // APA (AI-Powered Automation)
   // ============================================
 
-  apaStartRecording: async (options: { url?: string }): Promise<ApiResponse> => {
+  apaStartRecording: async (options: { url?: string; workDir?: string }): Promise<ApiResponse> => {
     if (!isElectron()) {
       return { success: false, error: 'APA is only available in desktop mode' }
     }
@@ -1280,7 +1281,11 @@ export const api = {
     return window.project4.apaStopRecording()
   },
 
-  apaExecuteSkill: async (options: { skillName: string; params: Record<string, string> }): Promise<ApiResponse> => {
+  apaExecuteSkill: async (options: {
+    skillName: string
+    params: Record<string, string>
+    timeoutMs?: number
+  }): Promise<ApiResponse> => {
     if (!isElectron()) {
       return { success: false, error: 'APA is only available in desktop mode' }
     }
@@ -1292,6 +1297,18 @@ export const api = {
       return { success: false, error: 'APA is only available in desktop mode' }
     }
     return window.project4.apaStopExecution()
+  },
+
+  apaValidateSkill: async (options: {
+    skillName: string
+    params: Record<string, string>
+    screenshotDir?: string
+    timeoutMs?: number
+  }): Promise<ApiResponse> => {
+    if (!isElectron()) {
+      return { success: false, error: 'APA is only available in desktop mode' }
+    }
+    return window.project4.apaValidateSkill(options)
   },
 
   apaUpdateScript: async (skillName: string, newScript: string): Promise<ApiResponse> => {
@@ -1353,6 +1370,26 @@ export const api = {
   onApaExecutionStopped: (callback: (data: unknown) => void) => {
     if (!isElectron()) return () => {}
     return window.project4.onApaExecutionStopped(callback)
+  },
+
+  // ===== Notification Channels =====
+  testNotificationChannel: async (channelType: string): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.project4.testNotificationChannel(channelType)
+    }
+    return httpRequest('POST', '/api/notify-channels/test', { channelType })
+  },
+
+  clearNotificationChannelCache: async (): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.project4.clearNotificationChannelCache()
+    }
+    return httpRequest('POST', '/api/notify-channels/clear-cache')
+  },
+
+  onNotificationToast: (callback: (data: unknown) => void) => {
+    if (!isElectron()) return () => {}
+    return window.project4.onNotificationToast(callback)
   },
 }
 

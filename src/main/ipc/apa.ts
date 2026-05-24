@@ -1,5 +1,5 @@
 /**
- * APA IPC Handlers - 录制/执行/更新
+ * APA IPC Handlers - 录制/执行/验证/更新
  *
  * 录制和执行都是长时间运行的操作（录制要等用户关闭浏览器，执行要等脚本跑完）。
  * 采用 fire-and-forget 模式：IPC 立即返回，状态通过 sendToRenderer 事件推送。
@@ -14,10 +14,12 @@ import {
 } from '../services/apa-recorder.service'
 import {
   executeSkill,
+  validateSkill,
   stopExecution,
   updateScript,
   isExecuting,
   type ExecuteOptions,
+  type ValidateOptions,
 } from '../services/apa-executor.service'
 
 export function registerApaHandlers(): void {
@@ -83,7 +85,19 @@ export function registerApaHandlers(): void {
     }
   })
 
-  // MCP 兜底成功后更新脚本
+  // 验证 skill（运行脚本 + 解析结构化输出 + 收集截图）
+  ipcMain.handle('apa:validate-skill', async (_event, options: ValidateOptions) => {
+    try {
+      const result = await validateSkill(options)
+      return { success: true, data: result }
+    } catch (error: unknown) {
+      const err = error as Error
+      console.error('[APA IPC] validate-skill error:', err)
+      return { success: false, error: err.message }
+    }
+  })
+
+  // 验证修复后更新脚本
   ipcMain.handle('apa:update-script', async (_event, skillName: string, newScript: string) => {
     try {
       const result = updateScript(skillName, newScript)

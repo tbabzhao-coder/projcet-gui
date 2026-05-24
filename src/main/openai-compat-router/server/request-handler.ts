@@ -19,6 +19,7 @@ import {
 } from '../stream'
 import { getApiTypeFromUrl, isValidEndpointUrl, getEndpointUrlError, shouldForceStream } from './api-type'
 import { withRequestQueue, generateQueueKey } from './request-queue'
+import { runInterceptors } from '../interceptors'
 import { BrowserWindow } from 'electron'
 
 // Push a debug log event to the renderer process DevTools console
@@ -184,6 +185,21 @@ export async function handleMessagesRequest(
 ): Promise<void> {
   const { debug = false, timeoutMs = DEFAULT_TIMEOUT_MS } = options
   const { url: backendUrl, key: apiKey, model } = config
+
+  // ── Interceptors: run before any conversion ──────────────
+  const interceptResult = await runInterceptors(
+    anthropicRequest,
+    { originalModel: anthropicRequest.model, res }
+  )
+
+  // If interceptor already sent a response (warmup/preflight), done
+  if (interceptResult.intercepted && 'responded' in interceptResult) {
+    return
+  }
+
+  // Use potentially modified request (image-budget may have evicted images)
+  anthropicRequest = interceptResult.request
+  // ── End interceptors ─────────────────────────────────────
 
   // Validate URL
   if (!isValidEndpointUrl(backendUrl)) {

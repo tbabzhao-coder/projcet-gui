@@ -54,6 +54,10 @@ resources/git-bash-win-x64
 
 # Playwright browsers (bundled, don't commit)
 resources/playwright-browsers
-
+resources/商业分析
+resources/Python312
 # Test files
 test-*.mjs
+
+# Notes/plans
+202[0-9]-*.txt

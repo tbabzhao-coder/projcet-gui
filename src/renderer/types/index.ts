@@ -194,6 +194,8 @@ export interface AppConfig {
   // Feishu/Lark integration
   feishu?: FeishuConfig;
   larkCli?: LarkCliConfig;
+  // Notification channels (external push: email, wecom, dingtalk, feishu, webhook)
+  notificationChannels?: import('../../shared/types/notification-channels').NotificationChannelsConfig;
 }
 
 // ============================================
@@ -445,6 +447,21 @@ export interface Thought {
     isError: boolean;
     timestamp: string;
   };
+  // Sub-agent support: links this thought to a parent Task tool_use
+  parentToolUseId?: string;
+  // Task/Agent tool progress (updated via task lifecycle events)
+  taskProgress?: TaskProgress;
+}
+
+/** Progress tracking for a Task/Agent tool_use thought */
+export interface TaskProgress {
+  taskId: string;
+  status: 'running' | 'completed' | 'failed' | 'stopped';
+  lastToolName?: string;
+  toolCount: number;
+  durationMs: number;
+  summary?: string;
+  totalTokens?: number;
 }
 
 // Legacy alias for backwards compatibility

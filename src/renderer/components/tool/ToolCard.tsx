@@ -20,6 +20,7 @@ import { useChatStore } from '../../stores/chat.store'
 import type { ToolCall, Question } from '../../types'
 import { useTranslation } from '../../i18n'
 import { QuestionCard } from './QuestionCard'
+import { PlanApprovalCard } from './PlanApprovalCard'
 
 interface ToolCardProps {
   toolCall: ToolCall
@@ -96,6 +97,8 @@ export function ToolCard({ toolCall, conversationId }: ToolCardProps) {
         return t('Edit notebook')
       case 'AskUserQuestion':
         return t('Ask user')
+      case 'ExitPlanMode':
+        return t('Plan Mode')
       default:
         return name
     }
@@ -229,6 +232,16 @@ export function ToolCard({ toolCall, conversationId }: ToolCardProps) {
               {t('Reject')}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Plan approval card for ExitPlanMode */}
+      {toolCall.status === 'waiting_approval' && toolCall.name === 'ExitPlanMode' && conversationId && (
+        <div className="border-t border-border">
+          <PlanApprovalCard
+            planContent={toolCall.description || ''}
+            conversationId={conversationId}
+          />
         </div>
       )}
 

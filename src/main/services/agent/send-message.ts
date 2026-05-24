@@ -9,24 +9,16 @@
  * - Error handling and recovery
  */
 
-import { BrowserWindow } from 'electron'
-import { getConfig, getClaudeConfigDir } from '../config.service'
+import { getConfig } from '../config.service'
 import { getConversation, saveSessionId, addMessage, updateLastMessage } from '../conversation.service'
-import { ensureOpenAICompatRouter, encodeBackendConfig } from '../../openai-compat-router'
 import {
-  isAIBrowserTool,
   AI_BROWSER_SYSTEM_PROMPT,
   createAIBrowserMcpServer
 } from '../ai-browser'
-import { buildEnvWithBundledNode } from '../node-runtime.service'
-import { buildEnvWithBundledPython } from '../python-runtime.service'
 import type {
   AgentRequest,
-  ToolCall,
   Thought,
   SessionConfig,
-  TokenUsage,
-  SingleCallUsage
 } from './types'
 import {
   getHeadlessElectronPath,
@@ -34,9 +26,6 @@ import {
   getApiCredentials,
   getEnabledMcpServers,
   buildSystemPromptAppend,
-  inferOpenAIWireApi,
-  sendToRenderer,
-  setMainWindow,
   calculateSkillsHash,
   calculateCredentialsHash
 } from './helpers'
@@ -52,15 +41,12 @@ import {
   unregisterActiveSession,
   v2Sessions
 } from './session-manager'
-import { broadcastMcpStatus } from './mcp-manager'
-import { createCanUseTool } from './permission-handler'
 import {
   formatCanvasContext,
   buildMessageContent,
-  parseSDKMessage,
-  extractSingleUsage,
-  extractResultUsage
 } from './message-utils'
+import { processStream, type StreamResult } from './stream-processor'
+import { emitAgentEvent } from './events'
 
 // ============================================
 // Send Message
@@ -78,11 +64,8 @@ import {
  * - Error handling and recovery
  */
 export async function sendMessage(
-  mainWindow: BrowserWindow | null,
   request: AgentRequest
 ): Promise<void> {
-  setMainWindow(mainWindow)
-
   const {
     spaceId,
     conversationId,
@@ -104,7 +87,7 @@ export async function sendMessage(
   console.log(`[Agent] provider=${credentials.provider} model=${credentials.model} key=${credentials.apiKey.substring(0, 8)}...`)
 
   // Push session start info to renderer DevTools
-  sendToRenderer('debug:api-log', spaceId, conversationId, {
+  emitAgentEvent('debug:api-log', spaceId, conversationId, {
     type: 'session-start',
     provider: credentials.provider,
     model: credentials.model,
@@ -191,7 +174,7 @@ export async function sendMessage(
       }
     }
     if (thinkingEnabled) {
-      sdkOptions.maxThinkingTokens = 10240
+      sdkOptions.thinkingConfig = { type: 'enabled', budgetTokens: 10240 }
     }
 
     const t0 = Date.now()
@@ -230,24 +213,72 @@ export async function sendMessage(
         await v2Session.setMaxThinkingTokens(thinkingEnabled ? 10240 : null)
         console.log(`[Agent][${conversationId}] Thinking mode: ${thinkingEnabled ? 'ON (10240 tokens)' : 'OFF'}`)
       }
+
+      // Set permission mode dynamically
+      if (v2Session.setPermissionMode) {
+        await v2Session.setPermissionMode('acceptEdits')
+        console.log(`[Agent][${conversationId}] Permission mode: acceptEdits`)
+      }
     } catch (e) {
       console.error(`[Agent][${conversationId}] Failed to set dynamic params:`, e)
     }
     console.log(`[Agent][${conversationId}] ⏱️ V2 session ready: ${Date.now() - t0}ms`)
 
-    // Process the stream
-    await processMessageStream(
+    // Build message content (text-only or multi-modal with images)
+    const canvasPrefix = formatCanvasContext(canvasContext)
+    const messageWithContext = canvasPrefix + message
+    const messageContent = buildMessageContent(messageWithContext, images)
+
+    if (images && images.length > 0) {
+      console.log(`[Agent][${conversationId}] Message includes ${images.length} image(s)`)
+    }
+
+    // Process the stream using the shared stream processor
+    const result = await processStream({
       v2Session,
       sessionState,
       spaceId,
       conversationId,
-      message,
-      images,
-      canvasContext,
-      resolvedCredentials.displayModel,
+      messageContent,
+      displayModel: resolvedCredentials.displayModel,
       abortController,
-      t0
-    )
+      t0,
+      callbacks: {
+        onComplete: (streamResult: StreamResult) => {
+          // Save session ID for future resumption
+          if (streamResult.capturedSessionId) {
+            saveSessionId(spaceId, conversationId, streamResult.capturedSessionId)
+            console.log(`[Agent][${conversationId}] Session ID saved:`, streamResult.capturedSessionId)
+          }
+
+          // Persist final content to conversation
+          const { finalContent, thoughts, tokenUsage } = streamResult
+
+          if (finalContent) {
+            updateLastMessage(spaceId, conversationId, {
+              content: finalContent,
+              thoughts: thoughts.length > 0 ? [...thoughts] : undefined,
+              tokenUsage: tokenUsage || undefined
+            })
+            console.log(`[Agent][${conversationId}] Saved ${thoughts.length} thoughts${tokenUsage ? ' with tokenUsage' : ''} to backend`)
+          } else {
+            // No text content — handle tool-only completion or empty response
+            const hasThoughts = thoughts.length > 0
+            const PLACEHOLDER_TOOLS_ONLY = 'Task completed using tools.'
+            const contentToSave = hasThoughts ? PLACEHOLDER_TOOLS_ONLY : ''
+
+            if (contentToSave || hasThoughts) {
+              updateLastMessage(spaceId, conversationId, {
+                content: contentToSave,
+                thoughts: hasThoughts ? [...thoughts] : undefined,
+                tokenUsage: tokenUsage || undefined,
+                timestamp: new Date().toISOString()
+              })
+            }
+          }
+        }
+      }
+    })
 
   } catch (error: unknown) {
     const err = error as Error
@@ -324,7 +355,7 @@ export async function sendMessage(
       }
     }
 
-    sendToRenderer('agent:error', spaceId, conversationId, {
+    emitAgentEvent('agent:error', spaceId, conversationId, {
       type: 'error',
       error: errorMessage
     })
@@ -338,618 +369,3 @@ export async function sendMessage(
   }
 }
 
-// ============================================
-// Stream Processing
-// ============================================
-
-/**
- * Process the message stream from V2 session
- */
-async function processMessageStream(
-  v2Session: any,
-  sessionState: any,
-  spaceId: string,
-  conversationId: string,
-  message: string,
-  images: AgentRequest['images'],
-  canvasContext: AgentRequest['canvasContext'],
-  displayModel: string,
-  abortController: AbortController,
-  t0: number
-): Promise<void> {
-  // Only keep track of the LAST text block as the final reply
-  // Intermediate text blocks are shown in thought process, not accumulated into message bubble
-  let lastTextContent = ''
-  let capturedSessionId: string | undefined
-
-  // Token usage tracking
-  // lastSingleUsage: Last API call usage (single call, represents current context size)
-  let lastSingleUsage: SingleCallUsage | null = null
-  let tokenUsage: TokenUsage | null = null
-
-  // Token-level streaming state
-  let currentStreamingText = ''  // Accumulates text_delta tokens
-  let isStreamingTextBlock = false  // True when inside a text content block
-  const STREAM_THROTTLE_MS = 30  // Throttle updates to ~33fps
-
-  // Streaming block state - track active blocks by index for delta/stop correlation
-  // Key: block index, Value: { type, thoughtId, content/partialJson }
-  const streamingBlocks = new Map<number, {
-    type: 'thinking' | 'tool_use'
-    thoughtId: string
-    content: string  // For thinking: accumulated thinking text, for tool_use: accumulated partial JSON
-    toolName?: string
-    toolId?: string
-  }>()
-
-  // Tool ID to Thought ID mapping - for merging tool_result into tool_use
-  const toolIdToThoughtId = new Map<string, string>()
-
-  const t1 = Date.now()
-  console.log(`[Agent][${conversationId}] Sending message to V2 session...`)
-  if (images && images.length > 0) {
-    console.log(`[Agent][${conversationId}] Message includes ${images.length} image(s)`)
-  }
-
-  // Inject Canvas Context prefix if available
-  // This provides AI awareness of what user is currently viewing
-  const canvasPrefix = formatCanvasContext(canvasContext)
-  const messageWithContext = canvasPrefix + message
-
-  // Build message content (text-only or multi-modal with images)
-  const messageContent = buildMessageContent(messageWithContext, images)
-
-  // Send message to V2 session and stream response
-  // For multi-modal messages, we need to send as SDKUserMessage
-  if (typeof messageContent === 'string') {
-    v2Session.send(messageContent)
-  } else {
-    // Multi-modal message: construct SDKUserMessage
-    const userMessage = {
-      type: 'user' as const,
-      message: {
-        role: 'user' as const,
-        content: messageContent
-      }
-    }
-    v2Session.send(userMessage as any)
-  }
-
-  // Stream messages from V2 session
-  for await (const sdkMessage of v2Session.stream()) {
-    // Handle abort - check this session's controller
-    if (abortController.signal.aborted) {
-      console.log(`[Agent][${conversationId}] Aborted`)
-      break
-    }
-
-    // Handle stream_event for token-level streaming (text only)
-    if (sdkMessage.type === 'stream_event') {
-      const event = (sdkMessage as any).event
-      if (!event) continue
-
-      // DEBUG: Log all stream events with timestamp (ms since send)
-      const elapsed = Date.now() - t1
-      // For message_start, log the full event to see if it contains content structure hints
-      if (event.type === 'message_start') {
-        console.log(`[Agent][${conversationId}] 🔴 +${elapsed}ms message_start FULL:`, JSON.stringify(event))
-      } else {
-        // console.log(`[Agent][${conversationId}] 🔴 +${elapsed}ms stream_event:`, JSON.stringify({
-        //   type: event.type,
-        //   index: event.index,
-        //   content_block: event.content_block,
-        //   delta: event.delta
-        // }))
-      }
-
-      // Text block started
-      if (event.type === 'content_block_start' && event.content_block?.type === 'text') {
-        isStreamingTextBlock = true
-        currentStreamingText = event.content_block.text || ''
-
-        // 🔑 Send precise signal for new text block (fixes truncation bug)
-        // This is 100% reliable - comes directly from SDK's content_block_start event
-        sendToRenderer('agent:message', spaceId, conversationId, {
-          type: 'message',
-          content: '',
-          isComplete: false,
-          isStreaming: false,
-          isNewTextBlock: true  // Signal: new text block started
-        })
-
-        console.log(`[Agent][${conversationId}] ⏱️ Text block started (isNewTextBlock signal): ${Date.now() - t1}ms after send`)
-      }
-
-      // ========== Thinking block streaming ==========
-      // Thinking block started - send empty thought immediately
-      if (event.type === 'content_block_start' && event.content_block?.type === 'thinking') {
-        const blockIndex = event.index ?? 0
-        const thoughtId = `thought-thinking-${Date.now()}-${blockIndex}`
-
-        // Track this block for delta correlation
-        streamingBlocks.set(blockIndex, {
-          type: 'thinking',
-          thoughtId,
-          content: ''
-        })
-
-        // Create and send streaming thought immediately
-        const thought: Thought = {
-          id: thoughtId,
-          type: 'thinking',
-          content: '',
-          timestamp: new Date().toISOString(),
-          isStreaming: true
-        }
-
-        // Add to session state
-        sessionState.thoughts.push(thought)
-
-        // Send to renderer for immediate display
-        sendToRenderer('agent:thought', spaceId, conversationId, { thought })
-        console.log(`[Agent][${conversationId}] ⏱️ Thinking block started (streaming): ${Date.now() - t1}ms after send`)
-      }
-
-      // Thinking delta - append to thought content
-      if (event.type === 'content_block_delta' && event.delta?.type === 'thinking_delta') {
-        const blockIndex = event.index ?? 0
-        const blockState = streamingBlocks.get(blockIndex)
-
-        if (blockState && blockState.type === 'thinking') {
-          const delta = event.delta.thinking || ''
-          blockState.content += delta
-
-          // Send delta to renderer for incremental update
-          sendToRenderer('agent:thought-delta', spaceId, conversationId, {
-            thoughtId: blockState.thoughtId,
-            delta,
-            content: blockState.content  // Also send full content for fallback
-          })
-        }
-      }
-
-      // Text delta - accumulate locally, send delta to frontend
-      if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta' && isStreamingTextBlock) {
-        const delta = event.delta.text || ''
-        currentStreamingText += delta
-
-        // Send delta immediately without throttling
-        sendToRenderer('agent:message', spaceId, conversationId, {
-          type: 'message',
-          delta,
-          isComplete: false,
-          isStreaming: true
-        })
-      }
-
-      // ========== Tool use block streaming ==========
-      // Tool use block started - send thought with tool name immediately
-      if (event.type === 'content_block_start' && event.content_block?.type === 'tool_use') {
-        const blockIndex = event.index ?? 0
-        const toolId = event.content_block.id || `tool-${Date.now()}`
-        const toolName = event.content_block.name || 'Unknown'
-        const thoughtId = `thought-tool-${Date.now()}-${blockIndex}`
-
-        // Track this block for delta correlation
-        streamingBlocks.set(blockIndex, {
-          type: 'tool_use',
-          thoughtId,
-          content: '',  // Will accumulate partial JSON
-          toolName,
-          toolId
-        })
-
-        // Create and send streaming tool thought immediately
-        const thought: Thought = {
-          id: thoughtId,
-          type: 'tool_use',
-          content: '',
-          timestamp: new Date().toISOString(),
-          toolName,
-          toolInput: {},  // Empty initially, will be populated on stop
-          isStreaming: true,
-          isReady: false  // Params not complete yet
-        }
-
-        // Add to session state
-        sessionState.thoughts.push(thought)
-
-        // Send to renderer for immediate display (shows tool name, "准备中...")
-        sendToRenderer('agent:thought', spaceId, conversationId, { thought })
-        console.log(`[Agent][${conversationId}] ⏱️ Tool block started [${toolName}] (streaming): ${Date.now() - t1}ms after send`)
-      }
-
-      // Tool use input JSON delta - accumulate partial JSON
-      if (event.type === 'content_block_delta' && event.delta?.type === 'input_json_delta') {
-        const blockIndex = event.index ?? 0
-        const blockState = streamingBlocks.get(blockIndex)
-
-        if (blockState && blockState.type === 'tool_use') {
-          const partialJson = event.delta.partial_json || ''
-          blockState.content += partialJson
-
-          // Send delta to renderer (for progress indication, not for parsing)
-          sendToRenderer('agent:thought-delta', spaceId, conversationId, {
-            thoughtId: blockState.thoughtId,
-            delta: partialJson,
-            isToolInput: true  // Flag: this is tool input JSON, not thinking text
-          })
-        }
-      }
-
-      // ========== Block stop handling ==========
-      // content_block_stop - finalize streaming blocks
-      if (event.type === 'content_block_stop') {
-        const blockIndex = event.index ?? 0
-        const blockState = streamingBlocks.get(blockIndex)
-
-        if (blockState) {
-          if (blockState.type === 'thinking') {
-            // Thinking block complete - send final state
-            sendToRenderer('agent:thought-delta', spaceId, conversationId, {
-              thoughtId: blockState.thoughtId,
-              content: blockState.content,
-              isComplete: true  // Signal: thinking is complete
-            })
-
-            // Update session state thought
-            const thought = sessionState.thoughts.find((t: Thought) => t.id === blockState.thoughtId)
-            if (thought) {
-              thought.content = blockState.content
-              thought.isStreaming = false
-            }
-
-            console.log(`[Agent][${conversationId}] Thinking block complete, length: ${blockState.content.length}`)
-          } else if (blockState.type === 'tool_use') {
-            // Tool use block complete - parse JSON and send final state
-            let toolInput: Record<string, unknown> = {}
-            try {
-              if (blockState.content) {
-                toolInput = JSON.parse(blockState.content)
-              }
-            } catch (e) {
-              console.error(`[Agent][${conversationId}] Failed to parse tool input JSON:`, e)
-            }
-
-            // Record mapping for merging tool_result later
-            if (blockState.toolId) {
-              toolIdToThoughtId.set(blockState.toolId, blockState.thoughtId)
-            }
-
-            // Send complete signal with parsed input
-            sendToRenderer('agent:thought-delta', spaceId, conversationId, {
-              thoughtId: blockState.thoughtId,
-              toolInput,
-              isComplete: true,  // Signal: tool params are complete
-              isReady: true,     // Tool is ready for execution
-              isToolInput: true  // Flag: this is tool input completion (triggers isReady update in frontend)
-            })
-
-            // Update session state thought
-            const thought = sessionState.thoughts.find((t: Thought) => t.id === blockState.thoughtId)
-            if (thought) {
-              thought.toolInput = toolInput
-              thought.isStreaming = false
-              thought.isReady = true
-            }
-
-            // Send tool-call event for tool approval/tracking
-            // This replaces the event that was previously sent from parseSDKMessage
-            const toolCall: ToolCall = {
-              id: blockState.toolId || blockState.thoughtId,
-              name: blockState.toolName || '',
-              status: 'running',
-              input: toolInput
-            }
-            sendToRenderer('agent:tool-call', spaceId, conversationId, toolCall as unknown as Record<string, unknown>)
-
-            console.log(`[Agent][${conversationId}] Tool block complete [${blockState.toolName}], input: ${JSON.stringify(toolInput).substring(0, 100)}`)
-          }
-
-          // Clean up tracking state
-          streamingBlocks.delete(blockIndex)
-        }
-
-        // Handle text block stop (existing logic)
-        if (isStreamingTextBlock) {
-          isStreamingTextBlock = false
-          // Send final content of this block
-          sendToRenderer('agent:message', spaceId, conversationId, {
-            type: 'message',
-            content: currentStreamingText,
-            isComplete: false,
-            isStreaming: false
-          })
-          // Update lastTextContent for final result (guard against empty string overwrite)
-          if (currentStreamingText) {
-            lastTextContent = currentStreamingText
-            console.log(`[Agent][${conversationId}] ✅ lastTextContent updated (stream), length: ${lastTextContent.length}, preview: "${lastTextContent.substring(0, 80)}..."`)
-          } else {
-            console.warn(`[Agent][${conversationId}] ⚠️ Text block completed but currentStreamingText is EMPTY, lastTextContent preserved: "${lastTextContent.substring(0, 80)}..."`)
-          }
-          console.log(`[Agent][${conversationId}] Text block completed, length: ${currentStreamingText.length}`)
-        }
-      }
-
-      continue  // stream_event handled, skip normal processing
-    }
-
-    // DEBUG: Log all SDK messages with timestamp
-    const elapsed = Date.now() - t1
-    console.log(`[Agent][${conversationId}] 🔵 +${elapsed}ms ${sdkMessage.type}:`,
-      sdkMessage.type === 'assistant'
-        ? JSON.stringify(
-            Array.isArray((sdkMessage as any).message?.content)
-              ? (sdkMessage as any).message.content.map((b: any) => ({ type: b.type, id: b.id, name: b.name, textLen: b.text?.length, thinkingLen: b.thinking?.length }))
-              : (sdkMessage as any).message?.content
-          )
-        : sdkMessage.type === 'user'
-          ? `tool_result or input`
-          : ''
-    )
-
-    // Extract single API call usage from assistant message (represents current context size)
-    if (sdkMessage.type === 'assistant') {
-      const usage = extractSingleUsage(sdkMessage)
-      if (usage) {
-        lastSingleUsage = usage
-      }
-    }
-
-    // Parse SDK message into Thought and send to renderer
-    // Pass credentials.model to display the user's actual configured model
-    const thought = parseSDKMessage(sdkMessage, displayModel)
-
-    if (thought) {
-      // Handle tool_result specially - merge into corresponding tool_use thought
-      if (thought.type === 'tool_result') {
-        const toolUseThoughtId = toolIdToThoughtId.get(thought.id)
-        if (toolUseThoughtId) {
-          // Found corresponding tool_use - merge result into it
-          const toolResult = {
-            output: thought.toolOutput || '',
-            isError: thought.isError || false,
-            timestamp: thought.timestamp
-          }
-
-          // Update backend session state
-          const toolUseThought = sessionState.thoughts.find((t: Thought) => t.id === toolUseThoughtId)
-          if (toolUseThought) {
-            toolUseThought.toolResult = toolResult
-          }
-
-          // Send thought-delta to merge result into tool_use on frontend
-          sendToRenderer('agent:thought-delta', spaceId, conversationId, {
-            thoughtId: toolUseThoughtId,
-            toolResult,
-            isToolResult: true  // Flag: this is a tool result merge
-          })
-
-          // Still send tool-result event for any listeners
-          sendToRenderer('agent:tool-result', spaceId, conversationId, {
-            type: 'tool_result',
-            toolId: thought.id,
-            result: thought.toolOutput || '',
-            isError: thought.isError || false
-          })
-
-          console.log(`[Agent][${conversationId}] Tool result merged into thought ${toolUseThoughtId}`)
-        } else {
-          // No mapping found - fall back to separate thought (shouldn't happen normally)
-          sessionState.thoughts.push(thought)
-          sendToRenderer('agent:thought', spaceId, conversationId, { thought })
-          sendToRenderer('agent:tool-result', spaceId, conversationId, {
-            type: 'tool_result',
-            toolId: thought.id,
-            result: thought.toolOutput || '',
-            isError: thought.isError || false
-          })
-          console.log(`[Agent][${conversationId}] Tool result fallback (no mapping): ${thought.id}`)
-        }
-      } else {
-        // Non tool_result thoughts - handle normally
-        // Accumulate thought in backend session (Single Source of Truth)
-        sessionState.thoughts.push(thought)
-
-        // Send ALL thoughts to renderer for real-time display in thought process area
-        // This includes text blocks - they appear in the timeline during generation
-        sendToRenderer('agent:thought', spaceId, conversationId, { thought })
-
-        // Handle specific thought types
-        if (thought.type === 'text') {
-          // Keep only the latest text block (overwritten by each new text block)
-          // This becomes the final reply when generation completes
-          // Intermediate texts stay in the thought process area only
-          // Guard against empty string overwrite (scenario 3: SDK parses text thought with empty content)
-          if (thought.content) {
-            lastTextContent = thought.content
-            console.log(`[Agent][${conversationId}] ✅ lastTextContent updated (thought), length: ${lastTextContent.length}, preview: "${lastTextContent.substring(0, 80)}..."`)
-          } else {
-            console.warn(`[Agent][${conversationId}] ⚠️ Text thought has EMPTY content, lastTextContent preserved: "${lastTextContent.substring(0, 80)}..."`)
-          }
-
-          // Send streaming update - frontend shows this during generation
-          sendToRenderer('agent:message', spaceId, conversationId, {
-            type: 'message',
-            content: lastTextContent,
-            isComplete: false
-          })
-        } else if (thought.type === 'tool_use') {
-          // Send tool call event
-          const toolCall: ToolCall = {
-            id: thought.id,
-            name: thought.toolName || '',
-            status: 'running',
-            input: thought.toolInput || {}
-          }
-          sendToRenderer('agent:tool-call', spaceId, conversationId, toolCall as unknown as Record<string, unknown>)
-        } else if (thought.type === 'result') {
-          // Final result - use the last text block as the final reply
-          const finalContent = lastTextContent || thought.content
-          // Only send message if there's actual content (avoid empty bubble)
-          if (finalContent) {
-            sendToRenderer('agent:message', spaceId, conversationId, {
-              type: 'message',
-              content: finalContent,
-              isComplete: true
-            })
-          }
-          // Fallback: if no text block was received, use result content for persistence
-          if (!lastTextContent && thought.content) {
-            lastTextContent = thought.content
-          }
-          // Note: updateLastMessage is called after loop to include tokenUsage
-          console.log(`[Agent][${conversationId}] Result thought received, ${sessionState.thoughts.length} thoughts accumulated`)
-        }
-      }
-    }
-
-    // Capture session ID and MCP status from system/result messages
-    // Use type assertion for SDK message properties that may vary
-    const msg = sdkMessage as Record<string, unknown>
-    if (sdkMessage.type === 'system') {
-      const subtype = msg.subtype as string | undefined
-      const sessionIdFromMsg = msg.session_id || (msg.message as Record<string, unknown>)?.session_id
-      if (sessionIdFromMsg) {
-        capturedSessionId = sessionIdFromMsg as string
-        console.log(`[Agent][${conversationId}] Captured session ID:`, capturedSessionId)
-      }
-
-      // Handle compact_boundary - context compression notification
-      if (subtype === 'compact_boundary') {
-        const compactMetadata = msg.compact_metadata as { trigger: 'manual' | 'auto'; pre_tokens: number } | undefined
-        if (compactMetadata) {
-          console.log(`[Agent][${conversationId}] Context compressed: trigger=${compactMetadata.trigger}, pre_tokens=${compactMetadata.pre_tokens}`)
-          // Send compact notification to renderer
-          sendToRenderer('agent:compact', spaceId, conversationId, {
-            type: 'compact',
-            trigger: compactMetadata.trigger,
-            preTokens: compactMetadata.pre_tokens
-          })
-        }
-      }
-
-      // Extract MCP server status from system init message
-      // SDKSystemMessage includes mcp_servers: { name: string; status: string }[]
-      const mcpServers = msg.mcp_servers as Array<{ name: string; status: string }> | undefined
-      if (mcpServers && mcpServers.length > 0) {
-        console.log(`[Agent][${conversationId}] MCP server status:`, JSON.stringify(mcpServers))
-        // Broadcast MCP status to frontend (global event, not conversation-specific)
-        broadcastMcpStatus(mcpServers)
-      }
-
-      // Also capture tools list if available
-      const tools = msg.tools as string[] | undefined
-      if (tools) {
-        console.log(`[Agent][${conversationId}] Available tools: ${tools.length}`)
-      }
-    } else if (sdkMessage.type === 'result') {
-      if (!capturedSessionId) {
-        const sessionIdFromMsg = msg.session_id || (msg.message as Record<string, unknown>)?.session_id
-        capturedSessionId = sessionIdFromMsg as string
-      }
-
-      // Extract token usage from result message
-      tokenUsage = extractResultUsage(msg, lastSingleUsage)
-      if (tokenUsage) {
-        console.log(`[Agent][${conversationId}] Token usage (single API):`, tokenUsage)
-      }
-    }
-  }
-
-  // Save session ID for future resumption
-  if (capturedSessionId) {
-    saveSessionId(spaceId, conversationId, capturedSessionId)
-    console.log(`[Agent][${conversationId}] Session ID saved:`, capturedSessionId)
-  }
-
-  // === FINAL STATE DIAGNOSTIC ===
-  console.log(`[Agent][${conversationId}] 📊 Stream ended. Final state:`, {
-    lastTextContent: lastTextContent ? `"${lastTextContent.substring(0, 100)}..." (len=${lastTextContent.length})` : 'EMPTY',
-    currentStreamingText: currentStreamingText ? `"${currentStreamingText.substring(0, 100)}..." (len=${currentStreamingText.length})` : 'EMPTY',
-    isStreamingTextBlock,
-    thoughtsCount: sessionState.thoughts.length,
-    thoughtTypes: sessionState.thoughts.reduce((acc: Record<string, number>, t: Thought) => { acc[t.type] = (acc[t.type] || 0) + 1; return acc }, {} as Record<string, number>)
-  })
-
-  // Ensure complete event is sent even if no result message was received
-  if (lastTextContent) {
-    console.log(`[Agent][${conversationId}] Sending final complete event with last text`)
-    // Backend saves complete message with thoughts and tokenUsage (Single Source of Truth)
-    updateLastMessage(spaceId, conversationId, {
-      content: lastTextContent,
-      thoughts: sessionState.thoughts.length > 0 ? [...sessionState.thoughts] : undefined,
-      tokenUsage: tokenUsage || undefined  // Include token usage if available
-    })
-    console.log(`[Agent][${conversationId}] Saved ${sessionState.thoughts.length} thoughts${tokenUsage ? ' with tokenUsage' : ''} to backend`)
-    sendToRenderer('agent:complete', spaceId, conversationId, {
-      type: 'complete',
-      duration: 0,
-      tokenUsage  // Include token usage data
-    })
-  } else {
-    console.log(`[Agent][${conversationId}] WARNING: No text content after SDK query completed`)
-    // CRITICAL: Still send complete event and persist message so frontend does not show empty bubble
-    // Model may complete entirely via tools (e.g. Office MCP) with no final text block
-
-    const fallbackContent = currentStreamingText || ''
-    const hasThoughts = sessionState.thoughts.length > 0
-
-    // Diagnostic logging: analyze thought types to distinguish normal vs anomalous scenarios
-    const thoughtTypes = sessionState.thoughts.reduce((acc: Record<string, number>, t: Thought) => {
-      acc[t.type] = (acc[t.type] || 0) + 1
-      return acc
-    }, {} as Record<string, number>)
-    const hasToolUse = sessionState.thoughts.some((t: Thought) => t.type === 'tool_use')
-    const hasTextThought = sessionState.thoughts.some((t: Thought) => t.type === 'text')
-
-    console.log(`[Agent][${conversationId}] Fallback path diagnostics:`, {
-      currentStreamingText: currentStreamingText ? `"${currentStreamingText.substring(0, 50)}..." (len=${currentStreamingText.length})` : 'empty',
-      isStreamingTextBlock,
-      thoughtTypes,
-      totalThoughts: sessionState.thoughts.length
-    })
-
-    // Anomaly detection: text thought exists but lastTextContent is empty
-    if (hasTextThought && !lastTextContent) {
-      console.warn(`[Agent][${conversationId}] BUG: text thoughts exist but lastTextContent is empty - text was lost`)
-    }
-
-    // When no text but we have thoughts (tool-only completion), use placeholder so bubble isn't empty
-    const PLACEHOLDER_TOOLS_ONLY = 'Task completed using tools.'
-    const contentToSave = fallbackContent || (hasThoughts ? PLACEHOLDER_TOOLS_ONLY : '')
-
-    if (contentToSave || hasThoughts) {
-      if (contentToSave && !fallbackContent) {
-        if (hasToolUse && !hasTextThought) {
-          // Normal scenario: pure tool completion
-          console.log(`[Agent][${conversationId}] Using placeholder for tool-only completion, thoughts: ${sessionState.thoughts.length}`)
-        } else {
-          // Anomalous scenario: has text thoughts but no text content
-          console.warn(`[Agent][${conversationId}] Using placeholder but text thoughts exist - possible text loss`)
-        }
-      }
-      console.log(`[Agent][${conversationId}] Saving content: "${contentToSave.substring(0, 50)}..." (len=${contentToSave.length})`)
-      updateLastMessage(spaceId, conversationId, {
-        content: contentToSave,
-        thoughts: hasThoughts ? [...sessionState.thoughts] : undefined,
-        tokenUsage: tokenUsage || undefined,
-        timestamp: new Date().toISOString()
-      })
-      // Notify frontend so bubble shows placeholder immediately (avoids empty bubble before reload)
-      if (contentToSave) {
-        sendToRenderer('agent:message', spaceId, conversationId, {
-          type: 'message',
-          content: contentToSave,
-          isComplete: true
-        })
-      }
-    }
-
-    sendToRenderer('agent:complete', spaceId, conversationId, {
-      type: 'complete',
-      duration: 0,
-      tokenUsage  // Include token usage data
-    })
-  }
-}

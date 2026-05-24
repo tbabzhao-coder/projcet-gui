@@ -101,6 +101,14 @@ function generateThoughtId(): string {
 }
 
 /**
+ * Filter Claude Code local command echo that should not be rendered as chat content.
+ */
+function shouldSuppressLocalCommandStdout(output: string): boolean {
+  const normalized = output.trim()
+  return /^Set model to\b/i.test(normalized)
+}
+
+/**
  * Parse SDK message into a Thought object
  *
  * @param message - Raw SDK message
@@ -165,10 +173,14 @@ export function parseSDKMessage(message: any, displayModel?: string): Thought | 
     if (typeof content === 'string') {
       const match = content.match(/<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/)
       if (match) {
+        const stdout = match[1].trim()
+        if (shouldSuppressLocalCommandStdout(stdout)) {
+          return null
+        }
         return {
           id: generateThoughtId(),
           type: 'text',  // Render as text block (will show in assistant bubble)
-          content: match[1].trim(),
+          content: stdout,
           timestamp
         }
       }

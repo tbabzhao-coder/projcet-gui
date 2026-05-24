@@ -71,10 +71,11 @@ def optimize_selector(original_selector, element_context):
     return original_selector
 ```
 
-## 降级策略
+## 修复策略
 
 如果优化后的 selector 在执行时失效：
-1. 截图保存当前页面状态
-2. 触发 MCP 降级模式
-3. AI 分析截图，重新定位元素
-4. 更新脚本中的 selector
+1. 脚本自动截图保存当前页面状态（`step-N.png`）
+2. AI 读取截图，分析页面结构变化
+3. 根据截图中可见的文本/属性，生成新的 selector
+4. 通过 Write 工具更新脚本中的 selector
+5. 重新运行验证

@@ -313,12 +313,11 @@ export async function getOrCreateV2Session(
   }
   const startTime = Date.now()
 
-  // Requires SDK patch: resume parameter lets CC restore history from disk
-  // Native SDK V2 Session doesn't support resume parameter
+  // resume is passed through via SDK patch to ProcessTransport
   if (sessionId) {
     sdkOptions.resume = sessionId
   }
-  // Requires SDK patch: native SDK ignores most sdkOptions parameters
+  // SDK patch passes additional options beyond SDKSessionOptions type definition
   // Use 'as any' to bypass type check, actual params handled by patched SDK
   const session = (await unstable_v2_createSession(sdkOptions as any)) as unknown as V2SDKSession
 
@@ -506,6 +505,34 @@ export function unregisterActiveSession(conversationId: string): void {
     pendingInvalidations.delete(conversationId)
     closeV2Session(conversationId)
   }
+}
+
+// ============================================
+// Pending Rebuild (for Consumer pattern)
+// ============================================
+
+/** Conversations that need session rebuild after current turn completes */
+const pendingRebuilds = new Set<string>()
+
+/**
+ * Mark a conversation for session rebuild after the current consumer turn completes.
+ * Called by config change handler when credentials change during an active turn.
+ */
+export function markPendingRebuild(conversationId: string): void {
+  pendingRebuilds.add(conversationId)
+}
+
+/**
+ * Check and consume a pending rebuild flag.
+ * Called by session-consumer after each turn to decide whether to break the loop.
+ * Returns true if a rebuild was pending (and clears the flag).
+ */
+export function consumePendingRebuild(conversationId: string): boolean {
+  if (pendingRebuilds.has(conversationId)) {
+    pendingRebuilds.delete(conversationId)
+    return true
+  }
+  return false
 }
 
 /**
