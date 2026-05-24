@@ -1,0 +1,1468 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>生产自动化平台 · 发展蓝图</title>
+<style>
+  :root {
+    --primary: #0F2A5C;
+    --primary-light: #1E3A7B;
+    --primary-soft: #E8EEF9;
+    --accent: #C9A66B;
+    --accent-soft: #FAF3E4;
+    --bg: #F5F6F8;
+    --surface: #FFFFFF;
+    --border: #E5E7EB;
+    --text: #1A1A1A;
+    --text-muted: #6B7280;
+    --text-light: #9CA3AF;
+    --green: #16A34A;
+    --green-soft: #DCFCE7;
+    --orange: #F59E0B;
+    --orange-soft: #FEF3C7;
+    --red: #DC2626;
+    --red-soft: #FEE2E2;
+    --blue: #2563EB;
+    --blue-soft: #DBEAFE;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei",
+                 "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.65;
+    font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 60px 56px;
+  }
+
+  /* ===== 封面 ===== */
+  .cover {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+    color: #fff;
+    padding: 96px 56px 88px;
+    border-radius: 16px;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 64px;
+  }
+  .cover::after {
+    content: '';
+    position: absolute;
+    top: -50%; right: -10%;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(201,166,107,0.18) 0%, transparent 70%);
+  }
+  .cover .eyebrow {
+    color: var(--accent);
+    font-size: 13px;
+    letter-spacing: 4px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    text-transform: uppercase;
+  }
+  .cover h1 {
+    font-size: 48px;
+    font-weight: 700;
+    line-height: 1.2;
+    margin-bottom: 20px;
+    letter-spacing: -0.5px;
+  }
+  .cover .subtitle {
+    font-size: 19px;
+    opacity: 0.85;
+    max-width: 720px;
+    font-weight: 300;
+    line-height: 1.6;
+  }
+  .cover .meta {
+    margin-top: 40px;
+    display: flex;
+    gap: 48px;
+    flex-wrap: wrap;
+    position: relative;
+    z-index: 2;
+  }
+  .cover .meta .item {
+    border-left: 2px solid var(--accent);
+    padding-left: 16px;
+  }
+  .cover .meta .item .label {
+    font-size: 12px;
+    opacity: 0.7;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .cover .meta .item .value {
+    font-size: 16px;
+    font-weight: 500;
+  }
+
+  /* ===== 章节 ===== */
+  section {
+    margin-bottom: 72px;
+  }
+  .section-header {
+    display: flex;
+    align-items: baseline;
+    gap: 18px;
+    margin-bottom: 28px;
+    padding-bottom: 16px;
+    border-bottom: 2px solid var(--primary);
+  }
+  .section-header .num {
+    font-family: 'Georgia', serif;
+    font-size: 38px;
+    color: var(--accent);
+    font-weight: 700;
+    line-height: 1;
+  }
+  .section-header h2 {
+    font-size: 26px;
+    color: var(--primary);
+    font-weight: 700;
+    letter-spacing: -0.3px;
+  }
+  .section-header .tagline {
+    margin-left: auto;
+    color: var(--text-muted);
+    font-size: 13px;
+    font-style: italic;
+  }
+
+  /* ===== 卡片 ===== */
+  .card {
+    background: var(--surface);
+    border-radius: 12px;
+    padding: 28px 32px;
+    border: 1px solid var(--border);
+  }
+  .card + .card { margin-top: 20px; }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+
+  /* ===== 战略定位 ===== */
+  .positioning {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 36px 40px;
+    position: relative;
+  }
+  .positioning .quote {
+    font-size: 22px;
+    color: var(--primary);
+    font-weight: 500;
+    line-height: 1.55;
+    margin-bottom: 24px;
+    padding-left: 24px;
+    border-left: 4px solid var(--accent);
+  }
+  .positioning .quote .highlight {
+    background: linear-gradient(180deg, transparent 60%, var(--accent-soft) 60%);
+    padding: 0 2px;
+  }
+  .positioning .keypoints {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 28px;
+    margin-top: 28px;
+  }
+  .keypoint {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .keypoint .icon {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    background: var(--primary-soft);
+    color: var(--primary);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .keypoint .title {
+    font-weight: 600;
+    color: var(--primary);
+    font-size: 14px;
+    margin-bottom: 4px;
+  }
+  .keypoint .desc {
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  /* ===== KPI 卡片 ===== */
+  .kpi {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 22px;
+    border-top: 3px solid var(--accent);
+  }
+  .kpi .label {
+    font-size: 12px;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+  }
+  .kpi .value {
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--primary);
+    line-height: 1.1;
+  }
+  .kpi .unit {
+    font-size: 14px;
+    color: var(--text-muted);
+    font-weight: 400;
+    margin-left: 4px;
+  }
+  .kpi .delta {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--green);
+  }
+  .kpi .delta.warn { color: var(--orange); }
+  .kpi .delta.bad { color: var(--red); }
+
+  /* ===== 现状盘点表 ===== */
+  .status-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .status-table th {
+    background: var(--primary-soft);
+    color: var(--primary);
+    text-align: left;
+    padding: 14px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--border);
+  }
+  .status-table td {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    vertical-align: top;
+  }
+  .status-table tr:last-child td { border-bottom: 0; }
+  .status-table .dim { color: var(--text-muted); font-size: 13px; }
+
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+  .badge-ok    { background: var(--green-soft); color: var(--green); }
+  .badge-warn  { background: var(--orange-soft); color: #B45309; }
+  .badge-miss  { background: var(--red-soft); color: var(--red); }
+  .badge-info  { background: var(--blue-soft); color: var(--blue); }
+
+  /* ===== 生命周期环 ===== */
+  .lifecycle-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px;
+  }
+  .stage-list {
+    margin-top: 28px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+  .stage-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 18px;
+    background: #FAFBFC;
+    border-left: 4px solid var(--accent);
+  }
+  .stage-card .stage-name {
+    font-weight: 700;
+    color: var(--primary);
+    font-size: 15px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .stage-card .stage-name .stage-no {
+    width: 22px; height: 22px;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 50%;
+    font-size: 11px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+  }
+  .stage-card .stage-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .stage-card .stage-tools .tool {
+    font-size: 11px;
+    background: var(--primary-soft);
+    color: var(--primary);
+    padding: 3px 8px;
+    border-radius: 4px;
+  }
+  .stage-card .stage-tools .tool.missing {
+    background: var(--red-soft);
+    color: var(--red);
+  }
+  .stage-card .stage-desc {
+    color: var(--text-muted);
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+
+  /* ===== 双环境架构 ===== */
+  .env-arch {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px;
+  }
+  .env-cols {
+    display: grid;
+    grid-template-columns: 1fr 0.6fr 1fr;
+    gap: 20px;
+    align-items: stretch;
+    margin-top: 16px;
+  }
+  .env-col {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+  }
+  .env-col.oa { border-top: 4px solid var(--blue); }
+  .env-col.registry { border-top: 4px solid var(--accent); background: var(--accent-soft); }
+  .env-col.prod { border-top: 4px solid var(--green); }
+  .env-col h4 {
+    color: var(--primary);
+    font-size: 15px;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .env-col .env-tag {
+    font-size: 11px;
+    background: var(--bg);
+    padding: 2px 8px;
+    border-radius: 3px;
+    color: var(--text-muted);
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+  .env-col .subtitle {
+    color: var(--text-muted);
+    font-size: 13px;
+    margin-bottom: 14px;
+    border-bottom: 1px dashed var(--border);
+    padding-bottom: 10px;
+  }
+  .env-col ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .env-col li {
+    padding: 6px 0 6px 16px;
+    position: relative;
+    font-size: 13.5px;
+    line-height: 1.6;
+  }
+  .env-col li::before {
+    content: '◆';
+    position: absolute;
+    left: 0;
+    color: var(--accent);
+    font-size: 8px;
+    top: 11px;
+  }
+  .env-col li .item-tag {
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-left: 6px;
+    font-weight: 600;
+  }
+  .env-col li .tag-existing { background: var(--green-soft); color: var(--green); }
+  .env-col li .tag-new { background: var(--blue-soft); color: var(--blue); }
+  .env-col li .tag-todo { background: var(--orange-soft); color: #B45309; }
+
+  /* ===== 路线图 ===== */
+  .roadmap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px;
+  }
+  .phase {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 24px;
+    padding: 20px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .phase:last-child { border-bottom: 0; }
+  .phase-meta .phase-no {
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+  }
+  .phase-meta .phase-name {
+    font-weight: 700;
+    color: var(--primary);
+    font-size: 18px;
+    margin-bottom: 4px;
+  }
+  .phase-meta .phase-time {
+    color: var(--text-muted);
+    font-size: 12.5px;
+  }
+  .phase-content .phase-goal {
+    font-size: 14.5px;
+    color: var(--primary);
+    margin-bottom: 14px;
+    font-weight: 500;
+    padding: 10px 14px;
+    background: var(--primary-soft);
+    border-radius: 6px;
+    border-left: 3px solid var(--primary);
+  }
+  .phase-items {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px 24px;
+  }
+  .phase-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 6px 0;
+    font-size: 13.5px;
+  }
+  .phase-item .check {
+    width: 18px; height: 18px;
+    border-radius: 4px;
+    background: var(--accent);
+    color: #fff;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    margin-top: 2px;
+  }
+  .phase-item .item-detail {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-top: 2px;
+  }
+
+  /* ===== 治理矩阵 ===== */
+  .gov-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+  .gov-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 22px 24px;
+    border-top: 3px solid var(--primary);
+  }
+  .gov-card h4 {
+    color: var(--primary);
+    font-size: 16px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .gov-card h4 .gov-icon {
+    width: 28px; height: 28px;
+    background: var(--primary-soft);
+    border-radius: 6px;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--primary);
+  }
+  .gov-card .gov-summary {
+    color: var(--text-muted);
+    font-size: 13px;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px dashed var(--border);
+  }
+  .gov-card .gov-items {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .gov-card .gov-items li {
+    padding: 4px 0;
+    font-size: 13px;
+    color: var(--text);
+  }
+  .gov-card .gov-items li .gov-status {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+  .gov-card .gov-items li .gov-status.s-ok { background: var(--green); }
+  .gov-card .gov-items li .gov-status.s-mid { background: var(--orange); }
+  .gov-card .gov-items li .gov-status.s-miss { background: var(--red); opacity: 0.5; }
+
+  /* ===== 风险 ===== */
+  .risk-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .risk-table th, .risk-table td {
+    padding: 14px 18px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    font-size: 13.5px;
+    vertical-align: top;
+  }
+  .risk-table th {
+    background: var(--primary-soft);
+    color: var(--primary);
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.3px;
+  }
+  .risk-table tr:last-child td { border-bottom: 0; }
+  .risk-table .severity {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .risk-table .sev-h { background: var(--red); }
+  .risk-table .sev-m { background: var(--orange); }
+  .risk-table .sev-l { background: var(--green); }
+
+  /* ===== 飞轮 ===== */
+  .flywheel-wrap {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+    color: #fff;
+    border-radius: 12px;
+    padding: 40px 48px;
+  }
+  .flywheel-wrap h3 {
+    font-size: 22px;
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+  .flywheel-wrap p {
+    opacity: 0.8;
+    font-size: 14px;
+    margin-bottom: 24px;
+  }
+
+  /* ===== 标签 ===== */
+  .tag {
+    display: inline-block;
+    padding: 2px 8px;
+    background: var(--primary-soft);
+    color: var(--primary);
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+  .tag.existing { background: var(--green-soft); color: var(--green); }
+  .tag.new { background: var(--blue-soft); color: var(--blue); }
+  .tag.todo { background: var(--orange-soft); color: #B45309; }
+  .tag.miss { background: var(--red-soft); color: var(--red); }
+
+  /* ===== 页脚 ===== */
+  footer {
+    margin-top: 80px;
+    padding-top: 32px;
+    border-top: 1px solid var(--border);
+    text-align: center;
+    color: var(--text-light);
+    font-size: 12px;
+  }
+
+  @media print {
+    .page { padding: 30px; }
+    section { page-break-inside: avoid; }
+    .cover { page-break-after: always; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ===== 封面 ===== -->
+  <div class="cover">
+    <div class="eyebrow">PRODUCTION AUTOMATION PLATFORM</div>
+    <h1>从 AI 助手到生产自动化平台</h1>
+    <p class="subtitle">以 Claude Agent SDK 为引擎，以 Skill 为最小自动化单元，<br/>
+       构建覆盖「建设 → 开发 → 测试 → 发布 → 运行 → 观测」的全生命周期闭环。</p>
+    <div class="meta">
+      <div class="item">
+        <div class="label">汇报对象</div>
+        <div class="value">公司管理层</div>
+      </div>
+      <div class="item">
+        <div class="label">规划周期</div>
+        <div class="value">12–18 个月</div>
+      </div>
+      <div class="item">
+        <div class="label">当前版本</div>
+        <div class="value">v1.1.8 · 通用 AI 助手</div>
+      </div>
+      <div class="item">
+        <div class="label">目标形态</div>
+        <div class="value">企业级 Skill 自动化平台</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 1. 战略定位 ===== -->
+  <section id="positioning">
+    <div class="section-header">
+      <span class="num">01</span>
+      <h2>战略定位 · 我们在做的不是工具，是「自动化工厂」</h2>
+      <span class="tagline">why we exist</span>
+    </div>
+    <div class="positioning">
+      <div class="quote">
+        将一线作业人员的<span class="highlight">重复性、规则性、跨系统作业</span>，<br/>
+        以 <strong>Skill</strong> 为单元沉淀，由 AI 驱动稳定执行，<br/>
+        形成<span class="highlight">可建设、可治理、可观测</span>的企业生产自动化能力。
+      </div>
+      <div class="keypoints">
+        <div class="keypoint">
+          <div class="icon">业</div>
+          <div>
+            <div class="title">业务价值</div>
+            <div class="desc">把"老员工的经验"沉淀为 Skill，由 AI 7×24 稳定执行；将作业时长从分钟级压缩到秒级，错误率单向下降。</div>
+          </div>
+        </div>
+        <div class="keypoint">
+          <div class="icon">规</div>
+          <div>
+            <div class="title">规模复制</div>
+            <div class="desc">一次开发 → 全员可用 → 沉淀复用。Skill 数量增长形成飞轮：场景越多 → 数据越多 → Skill 越优。</div>
+          </div>
+        </div>
+        <div class="keypoint">
+          <div class="icon">控</div>
+          <div>
+            <div class="title">企业可控</div>
+            <div class="desc">作业行为审计、权限审批、远程停止、签名校验 —— 给一线开放自动化能力，同时不放弃合规与安全。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 2. 现状盘点 ===== -->
+  <section id="status">
+    <div class="section-header">
+      <span class="num">02</span>
+      <h2>现状盘点 · 我们已经走到哪里</h2>
+      <span class="tagline">where we are today</span>
+    </div>
+
+    <div class="grid-4" style="margin-bottom: 24px;">
+      <div class="kpi">
+        <div class="label">已内置 Skill</div>
+        <div class="value">9<span class="unit">个</span></div>
+        <div class="delta">含 apa-builder / skill-vetter / lark / 微邮</div>
+      </div>
+      <div class="kpi">
+        <div class="label">支持平台</div>
+        <div class="value">3<span class="unit">端</span></div>
+        <div class="delta">macOS / Windows / Linux</div>
+      </div>
+      <div class="kpi">
+        <div class="label">SDK 集成度</div>
+        <div class="value">85<span class="unit">%</span></div>
+        <div class="delta warn">subagent / hooks 尚未启用</div>
+      </div>
+      <div class="kpi">
+        <div class="label">生产化就绪</div>
+        <div class="value">35<span class="unit">%</span></div>
+        <div class="delta bad">尚无双环境 / 签名 / 远控</div>
+      </div>
+    </div>
+
+    <table class="status-table">
+      <thead>
+        <tr>
+          <th style="width:18%">能力维度</th>
+          <th style="width:34%">已有基础</th>
+          <th style="width:34%">缺口/风险</th>
+          <th style="width:14%">总体状态</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Skill 体系</strong><div class="dim">建设·开发·分发</div></td>
+          <td>内置 9 个 Skill；<code>skill-creator</code> 提供 init / validate / package；<code>apa-builder</code> 浏览器自动化建设；同步机制 <code>syncSkillsToConfigDir</code></td>
+          <td>无独立 <strong>Skill Tester</strong>；无版本管理；无中央 Skill Registry；导入校验仅做 frontmatter</td>
+          <td><span class="badge badge-warn">部分就绪</span></td>
+        </tr>
+        <tr>
+          <td><strong>双环境分轨</strong><div class="dim">OA · Prod</div></td>
+          <td>已有 dev / prod 数据目录隔离；<code>app.isPackaged</code> 区分；<code>product.json</code> 可注入差异配置</td>
+          <td>无 <code>BUILD_ENV=oa|prod</code> 构建标志；图标、名称、更新源、Skill 来源未分轨；CI 无独立 workflow</td>
+          <td><span class="badge badge-miss">待建设</span></td>
+        </tr>
+        <tr>
+          <td><strong>权限与安全</strong></td>
+          <td>工具级 <code>canUseTool</code>；文件越界限制；危险 Bash 审批；Webhook HMAC；ad-hoc 签名</td>
+          <td>Skill 工具无审批；<strong>无 Skill 签名/校验</strong>；macOS 未公证；Windows 未正式签名；<code>permission-handler</code> 部分逻辑因 allowedTools 失效</td>
+          <td><span class="badge badge-miss">高风险</span></td>
+        </tr>
+        <tr>
+          <td><strong>可观测性</strong></td>
+          <td>electron-log 本地轮转；GA4 / 百度统计（生命周期事件 3 个）；性能监控（开发用）；通知通道（Webhook / 钉钉）</td>
+          <td>无 Sentry / 错误聚合；无业务遥测（Skill 调用 / 工具使用）；无远程日志；无集中监控大盘</td>
+          <td><span class="badge badge-miss">薄弱</span></td>
+        </tr>
+        <tr>
+          <td><strong>远程治理</strong></td>
+          <td>用户可选远程访问（HTTP + cloudflared 隧道）；本地 <code>stopGeneration()</code></td>
+          <td>无服务端下发的 <strong>Kill Switch</strong>；无远程停止 Skill；无远程禁用单个 Skill；无策略下发</td>
+          <td><span class="badge badge-miss">缺失</span></td>
+        </tr>
+        <tr>
+          <td><strong>分发与升级</strong></td>
+          <td><code>electron-updater</code> 已集成；macOS/Win/Linux 三端打包</td>
+          <td><code>initAutoUpdater()</code> 未被调用 → <strong>实际不会自动更新</strong>；无 OA/Prod 分轨更新源；无独立 Skill 增量分发通道</td>
+          <td><span class="badge badge-warn">需修复</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ===== 3. Skill 全生命周期闭环 ===== -->
+  <section id="lifecycle">
+    <div class="section-header">
+      <span class="num">03</span>
+      <h2>Skill 全生命周期 · 平台核心闭环</h2>
+      <span class="tagline">how we deliver value, on repeat</span>
+    </div>
+
+    <div class="lifecycle-wrap">
+      <!-- SVG 生命周期六角图 -->
+      <svg viewBox="0 0 880 360" width="100%" style="display:block;max-height:380px;">
+        <defs>
+          <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#0F2A5C"/>
+            <stop offset="1" stop-color="#1E3A7B"/>
+          </linearGradient>
+          <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="#C9A66B"/>
+          </marker>
+        </defs>
+        <!-- 中心标题 -->
+        <circle cx="440" cy="180" r="78" fill="url(#ringGrad)"/>
+        <text x="440" y="170" text-anchor="middle" fill="#fff" font-size="14" font-weight="700">Skill 生命周期</text>
+        <text x="440" y="192" text-anchor="middle" fill="#C9A66B" font-size="12">CLOSED LOOP</text>
+        <text x="440" y="210" text-anchor="middle" fill="#fff" opacity="0.7" font-size="10">飞轮越大，复制越易</text>
+
+        <!-- 六个阶段节点（手动定位形成六边环） -->
+        <!-- 1 建设 -->
+        <g>
+          <circle cx="200" cy="100" r="48" fill="#fff" stroke="#C9A66B" stroke-width="2"/>
+          <text x="200" y="92" text-anchor="middle" fill="#0F2A5C" font-size="11" font-weight="700">① 建设</text>
+          <text x="200" y="108" text-anchor="middle" fill="#6B7280" font-size="9">BUILD</text>
+          <text x="200" y="122" text-anchor="middle" fill="#0F2A5C" font-size="9">需求 · 设计</text>
+        </g>
+        <!-- 2 开发 -->
+        <g>
+          <circle cx="680" cy="100" r="48" fill="#fff" stroke="#C9A66B" stroke-width="2"/>
+          <text x="680" y="92" text-anchor="middle" fill="#0F2A5C" font-size="11" font-weight="700">② 开发</text>
+          <text x="680" y="108" text-anchor="middle" fill="#6B7280" font-size="9">DEVELOP</text>
+          <text x="680" y="122" text-anchor="middle" fill="#0F2A5C" font-size="9">APA Builder</text>
+        </g>
+        <!-- 3 测试 -->
+        <g>
+          <circle cx="800" cy="260" r="48" fill="#fff" stroke="#C9A66B" stroke-width="2"/>
+          <text x="800" y="252" text-anchor="middle" fill="#0F2A5C" font-size="11" font-weight="700">③ 测试</text>
+          <text x="800" y="268" text-anchor="middle" fill="#6B7280" font-size="9">TEST</text>
+          <text x="800" y="282" text-anchor="middle" fill="#0F2A5C" font-size="9">Skill Tester</text>
+        </g>
+        <!-- 4 发布 -->
+        <g>
+          <circle cx="560" cy="320" r="48" fill="#fff" stroke="#C9A66B" stroke-width="2"/>
+          <text x="560" y="312" text-anchor="middle" fill="#0F2A5C" font-size="11" font-weight="700">④ 发布</text>
+          <text x="560" y="328" text-anchor="middle" fill="#6B7280" font-size="9">RELEASE</text>
+          <text x="560" y="342" text-anchor="middle" fill="#0F2A5C" font-size="9">签名 · 灰度</text>
+        </g>
+        <!-- 5 运行 -->
+        <g>
+          <circle cx="320" cy="320" r="48" fill="#fff" stroke="#C9A66B" stroke-width="2"/>
+          <text x="320" y="312" text-anchor="middle" fill="#0F2A5C" font-size="11" font-weight="700">⑤ 运行</text>
+          <text x="320" y="328" text-anchor="middle" fill="#6B7280" font-size="9">OPERATE</text>
+          <text x="320" y="342" text-anchor="middle" fill="#0F2A5C" font-size="9">沙箱 · 审批</text>
+        </g>
+        <!-- 6 观测 -->
+        <g>
+          <circle cx="80" cy="260" r="48" fill="#fff" stroke="#C9A66B" stroke-width="2"/>
+          <text x="80" y="252" text-anchor="middle" fill="#0F2A5C" font-size="11" font-weight="700">⑥ 观测</text>
+          <text x="80" y="268" text-anchor="middle" fill="#6B7280" font-size="9">OBSERVE</text>
+          <text x="80" y="282" text-anchor="middle" fill="#0F2A5C" font-size="9">遥测 · 告警</text>
+        </g>
+        <!-- 箭头连线（顺时针） -->
+        <path d="M 248 100 Q 440 50 632 100" fill="none" stroke="#C9A66B" stroke-width="2" marker-end="url(#arrow)"/>
+        <path d="M 720 140 Q 800 200 790 215" fill="none" stroke="#C9A66B" stroke-width="2" marker-end="url(#arrow)"/>
+        <path d="M 770 300 Q 700 340 612 320" fill="none" stroke="#C9A66B" stroke-width="2" marker-end="url(#arrow)"/>
+        <path d="M 512 320 Q 440 360 368 320" fill="none" stroke="#C9A66B" stroke-width="2" marker-end="url(#arrow)"/>
+        <path d="M 272 320 Q 180 340 110 300" fill="none" stroke="#C9A66B" stroke-width="2" marker-end="url(#arrow)"/>
+        <path d="M 90 215 Q 80 100 160 100" fill="none" stroke="#C9A66B" stroke-width="2" marker-end="url(#arrow)"/>
+      </svg>
+
+      <div class="stage-list">
+        <div class="stage-card">
+          <div class="stage-name"><span class="stage-no">1</span>建设</div>
+          <div class="stage-desc">把"老员工经验"翻译成 Skill 需求；明确业务目标、输入输出、风险边界。</div>
+          <div class="stage-tools">
+            <span class="tool">Skill 需求模板</span>
+            <span class="tool missing">SOP 沉淀流</span>
+          </div>
+        </div>
+        <div class="stage-card">
+          <div class="stage-name"><span class="stage-no">2</span>开发</div>
+          <div class="stage-desc">用 APA Builder、Skill Creator 在 OA 端可视化构建；模板化、热重载、本地 Mock。</div>
+          <div class="stage-tools">
+            <span class="tool">apa-builder</span>
+            <span class="tool">skill-creator</span>
+            <span class="tool missing">热重载 + Mock</span>
+          </div>
+        </div>
+        <div class="stage-card">
+          <div class="stage-name"><span class="stage-no">3</span>测试</div>
+          <div class="stage-desc">独立的 Skill Tester：用例集、录制回放、跨页面/跨平台兼容回归、性能基线。</div>
+          <div class="stage-tools">
+            <span class="tool">apa:validate</span>
+            <span class="tool missing">skill-tester</span>
+            <span class="tool missing">录制 / 回放</span>
+          </div>
+        </div>
+        <div class="stage-card">
+          <div class="stage-name"><span class="stage-no">4</span>发布</div>
+          <div class="stage-desc">Skill 中央仓库 + 签名 + 灰度。OA 推送 → Registry 审批 → Prod 拉取。</div>
+          <div class="stage-tools">
+            <span class="tool missing">Skill Registry</span>
+            <span class="tool missing">签名 / Checksum</span>
+            <span class="tool missing">灰度策略</span>
+          </div>
+        </div>
+        <div class="stage-card">
+          <div class="stage-name"><span class="stage-no">5</span>运行</div>
+          <div class="stage-desc">作业人员电脑稳定执行；Skill 沙箱、权限审批、Hook 拦截、异常自愈。</div>
+          <div class="stage-tools">
+            <span class="tool">canUseTool</span>
+            <span class="tool missing">PreToolUse Hook</span>
+            <span class="tool missing">Skill 沙箱</span>
+          </div>
+        </div>
+        <div class="stage-card">
+          <div class="stage-name"><span class="stage-no">6</span>观测</div>
+          <div class="stage-desc">业务遥测 + 错误聚合 + 实时大盘 + 远程停止 / 禁用 Skill。</div>
+          <div class="stage-tools">
+            <span class="tool">electron-log</span>
+            <span class="tool missing">业务遥测</span>
+            <span class="tool missing">远程 Kill Switch</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 4. 双环境架构 ===== -->
+  <section id="env-arch">
+    <div class="section-header">
+      <span class="num">04</span>
+      <h2>OA / Prod 双环境架构 · 工厂的"研发车间"与"量产车间"</h2>
+      <span class="tagline">two environments, one platform</span>
+    </div>
+
+    <div class="env-arch">
+      <p style="color:var(--text-muted);font-size:14px;margin-bottom:16px;">
+        通过 <code>BUILD_ENV</code> 构建标志分离打包产物：<strong>OA 包</strong>面向 Skill 开发与测试人员，<strong>Prod 包</strong>面向一线作业人员。
+        两者共享内核（Claude Agent SDK + Skill 引擎），但在<strong>能力开放程度、来源、可观测性</strong>上完全不同。
+      </p>
+
+      <div class="env-cols">
+
+        <div class="env-col oa">
+          <h4>OA 环境 <span class="env-tag">DEV / TEST</span></h4>
+          <div class="subtitle">面向 Skill 开发者 · 强能力、弱限制</div>
+          <ul>
+            <li><strong>开发工具集</strong> <span class="item-tag tag-existing">已有</span><br/>
+              <span style="color:var(--text-muted);font-size:12px">apa-builder · skill-creator · DevTools</span>
+            </li>
+            <li><strong>测试套件</strong> <span class="item-tag tag-new">新建</span><br/>
+              <span style="color:var(--text-muted);font-size:12px">skill-tester · 录制回放 · Mock 数据</span>
+            </li>
+            <li><strong>本地热重载</strong> <span class="item-tag tag-new">新建</span><br/>
+              <span style="color:var(--text-muted);font-size:12px">改文件即时生效，无需重启 session</span>
+            </li>
+            <li><strong>调试钩子</strong> <span class="item-tag tag-new">新建</span><br/>
+              <span style="color:var(--text-muted);font-size:12px">PreToolUse / PostToolUse 全量打开</span>
+            </li>
+            <li><strong>Skill 推送</strong> <span class="item-tag tag-new">新建</span><br/>
+              <span style="color:var(--text-muted);font-size:12px">一键发布到 Registry（待审批）</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="env-col registry">
+          <h4>Skill Registry <span class="env-tag">CENTRAL</span></h4>
+          <div class="subtitle">企业 Skill 中央仓库 · 治理枢纽</div>
+          <ul>
+            <li><strong>版本管理</strong> <span class="item-tag tag-todo">规划</span><br/>
+              <span style="color:var(--text-muted);font-size:12px">语义版本 · 兼容性矩阵</span>
+            </li>
+            <li><strong>签名服务</strong> <span class="item-tag tag-todo">规划</span><br/>
+              <span style="color:var(--text-muted);font-size:12px">企业 CA 签发 · 防篡改</span>
+            </li>
+            <li><strong>审批流</strong> <span class="item-tag tag-todo">规划</span><br/>
+              <span style="color:var(--text-muted);font-size:12px">代码 Review · 安全扫描</span>
+            </li>
+            <li><strong>灰度策略</strong> <span class="item-tag tag-todo">规划</span><br/>
+              <span style="color:var(--text-muted);font-size:12px">按人群/部门 渐进发布</span>
+            </li>
+            <li><strong>Kill Switch</strong> <span class="item-tag tag-todo">规划</span><br/>
+              <span style="color:var(--text-muted);font-size:12px">远程禁用问题 Skill</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="env-col prod">
+          <h4>Prod 环境 <span class="env-tag">PRODUCTION</span></h4>
+          <div class="subtitle">面向一线作业人员 · 稳定、可控、可观测</div>
+          <ul>
+            <li><strong>运行时</strong> <span class="item-tag tag-existing">已有</span><br/>
+              <span style="color:var(--text-muted);font-size:12px">Claude Agent SDK + Skill 沙箱</span>
+            </li>
+            <li><strong>签名校验</strong> <span class="item-tag tag-todo">必做</span><br/>
+              <span style="color:var(--text-muted);font-size:12px">启动时验证 Skill 签名链</span>
+            </li>
+            <li><strong>权限引擎</strong> <span class="item-tag tag-new">增强</span><br/>
+              <span style="color:var(--text-muted);font-size:12px">Skill 工具默认拒绝，按需开放</span>
+            </li>
+            <li><strong>业务遥测</strong> <span class="item-tag tag-new">新建</span><br/>
+              <span style="color:var(--text-muted);font-size:12px">Skill 调用 / 耗时 / 成功率</span>
+            </li>
+            <li><strong>异常自愈</strong> <span class="item-tag tag-new">新建</span><br/>
+              <span style="color:var(--text-muted);font-size:12px">熔断 · 重试 · 降级</span>
+            </li>
+            <li><strong>远程控制</strong> <span class="item-tag tag-new">新建</span><br/>
+              <span style="color:var(--text-muted);font-size:12px">停止 / 禁用 / 强升级</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 流转箭头说明 -->
+      <div style="margin-top:24px;padding:16px 20px;background:var(--bg);border-radius:8px;font-size:13px;color:var(--text-muted);text-align:center;">
+        <strong style="color:var(--primary);">流转路径</strong> ：
+        <span style="margin:0 8px;">OA 端开发 / 测试</span>
+        <span style="color:var(--accent);">→</span>
+        <span style="margin:0 8px;">推送 Registry（含签名 + 审批）</span>
+        <span style="color:var(--accent);">→</span>
+        <span style="margin:0 8px;">Prod 端拉取（按灰度策略）</span>
+        <span style="color:var(--accent);">→</span>
+        <span style="margin:0 8px;">遥测回流</span>
+        <span style="color:var(--accent);">↺</span>
+        <span style="margin:0 8px;">驱动下一轮迭代</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 5. 三大平台支柱 ===== -->
+  <section id="pillars">
+    <div class="section-header">
+      <span class="num">05</span>
+      <h2>三大平台支柱 · 建什么、怎么建</h2>
+      <span class="tagline">three pillars to build</span>
+    </div>
+
+    <div class="grid-3">
+      <div class="card" style="border-top:3px solid var(--blue);">
+        <h3 style="color:var(--primary);font-size:18px;margin-bottom:6px;">① Skill 工坊</h3>
+        <div style="color:var(--text-muted);font-size:13px;margin-bottom:14px;">Skill Studio · OA 端</div>
+        <ul style="list-style:none;padding:0;font-size:13.5px;line-height:1.9;">
+          <li><span class="tag existing">已有</span> apa-builder（浏览器自动化）</li>
+          <li><span class="tag existing">已有</span> skill-creator（脚手架）</li>
+          <li><span class="tag new">新增</span> Skill 项目模板库</li>
+          <li><span class="tag new">新增</span> 热重载 + 本地 Mock</li>
+          <li><span class="tag new">新增</span> 可视化调试器（Hook 注入）</li>
+          <li><span class="tag new">新增</span> AI 辅助生成（基于 SOP）</li>
+        </ul>
+        <p style="margin-top:14px;color:var(--text-muted);font-size:12.5px;line-height:1.55;">
+          <strong>愿景：</strong>让"懂业务的人"也能在 1 小时内构建一个可运行的 Skill 原型。
+        </p>
+      </div>
+
+      <div class="card" style="border-top:3px solid var(--accent);">
+        <h3 style="color:var(--primary);font-size:18px;margin-bottom:6px;">② Skill 质检中心</h3>
+        <div style="color:var(--text-muted);font-size:13px;margin-bottom:14px;">Skill Tester · OA 端 + CI</div>
+        <ul style="list-style:none;padding:0;font-size:13.5px;line-height:1.9;">
+          <li><span class="tag existing">已有</span> apa:validate-skill（脚本执行+截图）</li>
+          <li><span class="tag new">新增</span> Skill 用例 DSL（声明式）</li>
+          <li><span class="tag new">新增</span> 录制 / 回放 / 比对</li>
+          <li><span class="tag new">新增</span> 跨平台兼容回归（Mac / Win）</li>
+          <li><span class="tag new">新增</span> 性能基线 + 异常注入</li>
+          <li><span class="tag new">新增</span> CI 自动化（PR 触发）</li>
+        </ul>
+        <p style="margin-top:14px;color:var(--text-muted);font-size:12.5px;line-height:1.55;">
+          <strong>愿景：</strong>每个发布到 Prod 的 Skill，都必须通过质检中心的全部用例。
+        </p>
+      </div>
+
+      <div class="card" style="border-top:3px solid var(--green);">
+        <h3 style="color:var(--primary);font-size:18px;margin-bottom:6px;">③ Skill 运行底座</h3>
+        <div style="color:var(--text-muted);font-size:13px;margin-bottom:14px;">Skill Runtime · Prod 端</div>
+        <ul style="list-style:none;padding:0;font-size:13.5px;line-height:1.9;">
+          <li><span class="tag existing">已有</span> Claude Agent SDK 集成</li>
+          <li><span class="tag existing">已有</span> canUseTool 权限审批</li>
+          <li><span class="tag new">新增</span> Skill 签名校验链</li>
+          <li><span class="tag new">新增</span> PreToolUse / PostToolUse 全埋点</li>
+          <li><span class="tag new">新增</span> 业务遥测 + 错误聚合</li>
+          <li><span class="tag new">新增</span> 远程 Kill Switch + 灰度</li>
+          <li><span class="tag new">新增</span> 异常自愈（重试 / 熔断 / 降级）</li>
+        </ul>
+        <p style="margin-top:14px;color:var(--text-muted);font-size:12.5px;line-height:1.55;">
+          <strong>愿景：</strong>一线员工不感知任何技术细节；运维可在 30 秒内远程停止任意 Skill。
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 6. 治理矩阵 ===== -->
+  <section id="governance">
+    <div class="section-header">
+      <span class="num">06</span>
+      <h2>关键治理机制 · 让生产自动化"敢交付"</h2>
+      <span class="tagline">make automation trustable</span>
+    </div>
+
+    <div class="gov-grid">
+      <div class="gov-card">
+        <h4><span class="gov-icon">🛡</span>安全与合规</h4>
+        <div class="gov-summary">企业自动化的前提是"可控、可审计、可追责"。</div>
+        <ul class="gov-items">
+          <li><span class="gov-status s-mid"></span>工具级审批（canUseTool）<span style="color:var(--text-muted);">— 已有，但 Skill 工具默认放行</span></li>
+          <li><span class="gov-status s-miss"></span>Skill 签名 / Checksum 校验 <span style="color:var(--text-muted);">— 必须建</span></li>
+          <li><span class="gov-status s-miss"></span>Skill 安全扫描（敏感数据 / 危险命令）<span style="color:var(--text-muted);">— 已有 skill-vetter 指南，待自动化</span></li>
+          <li><span class="gov-status s-miss"></span>操作审计日志（谁在何时做了什么）<span style="color:var(--text-muted);">— 待建</span></li>
+          <li><span class="gov-status s-miss"></span>macOS 公证 / Windows 正式签名 <span style="color:var(--text-muted);">— 必须办</span></li>
+        </ul>
+      </div>
+
+      <div class="gov-card">
+        <h4><span class="gov-icon">📊</span>可观测性</h4>
+        <div class="gov-summary">没有度量，谈不上"生产化"。</div>
+        <ul class="gov-items">
+          <li><span class="gov-status s-ok"></span>本地日志（electron-log，5MB 轮转）</li>
+          <li><span class="gov-status s-mid"></span>生命周期 Analytics（GA4 / 百度，3 个事件）</li>
+          <li><span class="gov-status s-miss"></span>业务遥测（Skill 调用 / 耗时 / 成功率）</li>
+          <li><span class="gov-status s-miss"></span>错误聚合（Sentry / 自建）</li>
+          <li><span class="gov-status s-miss"></span>集中监控大盘 + 告警阈值</li>
+        </ul>
+      </div>
+
+      <div class="gov-card">
+        <h4><span class="gov-icon">⚙</span>稳定性与运维</h4>
+        <div class="gov-summary">一线作业 7×24，平台必须"扛得住、停得下"。</div>
+        <ul class="gov-items">
+          <li><span class="gov-status s-mid"></span>自动更新（electron-updater 已集成，<strong>但未挂载</strong>）</li>
+          <li><span class="gov-status s-miss"></span>远程 Kill Switch（停止 Skill / 禁用 Skill）</li>
+          <li><span class="gov-status s-miss"></span>异常自愈（熔断 / 重试 / 降级）</li>
+          <li><span class="gov-status s-miss"></span>灰度发布（按部门 / 人群推 Skill）</li>
+          <li><span class="gov-status s-miss"></span>多版本兼容（同时支持 N、N-1）</li>
+        </ul>
+      </div>
+
+      <div class="gov-card">
+        <h4><span class="gov-icon">🧪</span>质量与发布</h4>
+        <div class="gov-summary">"研发到生产"的中间，要有一道质检闸口。</div>
+        <ul class="gov-items">
+          <li><span class="gov-status s-mid"></span>Skill 结构校验（quick_validate.py）</li>
+          <li><span class="gov-status s-miss"></span>Skill Tester（用例 / 录制 / 回放）</li>
+          <li><span class="gov-status s-miss"></span>CI 自动化（PR 触发 Skill 全量回归）</li>
+          <li><span class="gov-status s-miss"></span>Skill Registry 审批流</li>
+          <li><span class="gov-status s-miss"></span>跨平台兼容矩阵（Mac × Win × 版本）</li>
+        </ul>
+      </div>
+    </div>
+
+    <p style="margin-top:16px;color:var(--text-muted);font-size:12.5px;text-align:right;">
+      <span style="display:inline-block;width:8px;height:8px;background:var(--green);border-radius:50%;margin-right:4px;"></span>已就绪
+      <span style="display:inline-block;width:8px;height:8px;background:var(--orange);border-radius:50%;margin:0 4px 0 12px;"></span>部分就绪
+      <span style="display:inline-block;width:8px;height:8px;background:var(--red);opacity:0.5;border-radius:50%;margin:0 4px 0 12px;"></span>待建设
+    </p>
+  </section>
+
+  <!-- ===== 7. 路线图 ===== -->
+  <section id="roadmap">
+    <div class="section-header">
+      <span class="num">07</span>
+      <h2>分阶段路线图 · 三步走，12–18 个月</h2>
+      <span class="tagline">phased delivery</span>
+    </div>
+
+    <div class="roadmap">
+
+      <div class="phase">
+        <div class="phase-meta">
+          <div class="phase-no">PHASE 1</div>
+          <div class="phase-name">筑基</div>
+          <div class="phase-time">M1 – M4（约 4 个月）</div>
+        </div>
+        <div class="phase-content">
+          <div class="phase-goal">🎯 目标：让平台"敢上生产" —— 双环境分离 + 远控基础 + 自动更新真正生效</div>
+          <div class="phase-items">
+            <div class="phase-item">
+              <div class="check">✓</div>
+              <div><strong>OA / Prod 双环境构建</strong><div class="item-detail">引入 BUILD_ENV、分离图标/名称/更新源/Skill 来源</div></div>
+            </div>
+            <div class="phase-item">
+              <div class="check">✓</div>
+              <div><strong>修复自动更新</strong><div class="item-detail">挂载 initAutoUpdater，配置 publish provider</div></div>
+            </div>
+            <div class="phase-item">
+              <div class="check">✓</div>
+              <div><strong>PreToolUse Hook 全埋点</strong><div class="item-detail">替代失效的 canUseTool 防御层，统一审计</div></div>
+            </div>
+            <div class="phase-item">
+              <div class="check">✓</div>
+              <div><strong>业务遥测打底</strong><div class="item-detail">Skill 调用 / 耗时 / 成功率上报到本地 + 远端</div></div>
+            </div>
+            <div class="phase-item">
+              <div class="check">✓</div>
+              <div><strong>远程 Kill Switch v1</strong><div class="item-detail">服务端下发停用某 Skill 的开关</div></div>
+            </div>
+            <div class="phase-item">
+              <div class="check">✓</div>
+              <div><strong>macOS 公证 / Windows 签名</strong><div class="item-detail">企业证书申请 + 签发流水线</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="phase">
+        <div class="phase-meta">
+          <div class="phase-no">PHASE 2</div>
+          <div class="phase-name">闭环</div>
+          <div class="phase-time">M5 – M10（约 6 个月）</div>
+        </div>
+        <div class="phase-content">
+          <div class="phase-goal">🎯 目标：让 Skill 全生命周期闭环 —— 中央 Registry + Skill Tester + 签名链</div>
+          <div class="phase-items">
+            <div class="phase-item">
+              <div class="check">✓</div>
+              <div><strong>Skill Registry v1</strong><div class="item-detail">版本管理 · 上传 · 拉取 · 审批流</div></div>
+            </div>
+            <div class="phase-item">
+              <div class="check">✓</div>
+              <div><strong>Skill 签名校验链</strong><div class="item-detail">企业 CA → 打包签名 → Prod 端启动校验</div></div>
+            </div>
+            <div class="phase-item">
+              <div class="check">✓</div>
+              <div><strong>Skill Tester</strong><div class="item-detail">用例 DSL · 录制回放 · 跨平台回归</div></div>
+            </div>
+            <div class="phase-item">
+              <div class="check">✓</div>
+              <div><strong>CI/CD 接入</strong><div class="item-detail">PR 触发 Skill 全量回归，自动上传 Registry</div></div>
+            </div>
+            <div class="phase-item">
+              <div class="check">✓</div>
+              <div><strong>灰度发布</strong><div class="item-detail">按部门 / 人群 / 比例渐进推送 Skill</div></div>
+            </div>
+            <div class="phase-item">
+              <div class="check">✓</div>
+              <div><strong>错误聚合（Sentry）</strong><div class="item-detail">异常自动归类、定位代码行、关联 Skill 版本</div></div>
+            </div>
+            <div class="phase-item">
+              <div class="check">✓</div>
+              <div><strong>监控大盘 v1</strong><div class="item-detail">实时 Skill 使用量 / 错误率 / 部门分布</div></div>
+            </div>
+            <div class="phase-item">
+              <div class="check">✓</div>
+              <div><strong>操作审计</strong><div class="item-detail">谁 / 何时 / 在哪台机器 / 跑了哪个 Skill</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="phase">
+        <div class="phase-meta">
+          <div class="phase-no">PHASE 3</div>
+          <div class="phase-name">规模化</div>
+          <div class="phase-time">M11 – M18（约 6–8 个月）</div>
+        </div>
+        <div class="phase-content">
+          <div class="phase-goal">🎯 目标：让平台"自我繁殖" —— AI 辅助 Skill 生成 + 跨部门复用 + 平台化运营</div>
+          <div class="phase-items">
+            <div class="phase-item">
+              <div class="check">✓</div>
+              <div><strong>AI 辅助 Skill 生成</strong><div class="item-detail">基于 SOP / 录屏，AI 一键生成 Skill 草稿</div></div>
+            </div>
+            <div class="phase-item">
+              <div class="check">✓</div>
+              <div><strong>跨部门 Skill 市场</strong><div class="item-detail">部门内部发布 / 全公司订阅 / 评分推荐</div></div>
+            </div>
+            <div class="phase-item">
+              <div class="check">✓</div>
+              <div><strong>Subagent 协作</strong><div class="item-detail">复杂作业用主代理 + 多 Subagent 分工</div></div>
+            </div>
+            <div class="phase-item">
+              <div class="check">✓</div>
+              <div><strong>异常自愈</strong><div class="item-detail">熔断 / 重试 / 降级 / 自动回滚</div></div>
+            </div>
+            <div class="phase-item">
+              <div class="check">✓</div>
+              <div><strong>多租户 / 多团队</strong><div class="item-detail">不同业务线独立 Skill 域 + 权限隔离</div></div>
+            </div>
+            <div class="phase-item">
+              <div class="check">✓</div>
+              <div><strong>平台运营度量</strong><div class="item-detail">活跃 Skill 数 · 节省人时 · ROI 仪表盘</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===== 8. 度量 / KPI ===== -->
+  <section id="kpi">
+    <div class="section-header">
+      <span class="num">08</span>
+      <h2>度量体系 · 用数据证明价值</h2>
+      <span class="tagline">measure what matters</span>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h4 style="color:var(--primary);font-size:15px;margin-bottom:14px;">📈 平台规模指标</h4>
+        <table class="status-table" style="border:none;">
+          <tbody>
+            <tr><td>累计 Skill 数</td><td><strong>当前 9 → Phase 2 目标 30+ → Phase 3 目标 100+</strong></td></tr>
+            <tr><td>月活作业人员</td><td>覆盖率 / 部门数 / 留存率</td></tr>
+            <tr><td>Skill 月调用量</td><td>按部门 / 按 Skill / 按时段</td></tr>
+            <tr><td>Skill 复用率</td><td>跨部门订阅次数</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h4 style="color:var(--primary);font-size:15px;margin-bottom:14px;">⏱ 业务价值指标</h4>
+        <table class="status-table" style="border:none;">
+          <tbody>
+            <tr><td>单次作业节省时长</td><td>人工 vs Skill 自动化对比</td></tr>
+            <tr><td>累计节省人时</td><td>月度 / 季度 / 年度</td></tr>
+            <tr><td>错误率下降</td><td>Skill 替代后 vs 替代前</td></tr>
+            <tr><td>ROI</td><td>建设投入 vs 节省成本</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h4 style="color:var(--primary);font-size:15px;margin-bottom:14px;">🔧 工程质量指标</h4>
+        <table class="status-table" style="border:none;">
+          <tbody>
+            <tr><td>Skill 单次执行成功率</td><td>P50 / P95 / P99</td></tr>
+            <tr><td>Skill 平均耗时</td><td>按 Skill 分桶</td></tr>
+            <tr><td>崩溃率（Crash Free Sessions）</td><td>目标 > 99.5%</td></tr>
+            <tr><td>从 PR 合并到 Prod 时长</td><td>研发交付效率</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h4 style="color:var(--primary);font-size:15px;margin-bottom:14px;">🛡 治理与安全指标</h4>
+        <table class="status-table" style="border:none;">
+          <tbody>
+            <tr><td>未签名 Skill 拦截数</td><td>Prod 端拒绝运行次数</td></tr>
+            <tr><td>Kill Switch 触发次数</td><td>响应时长 P95 < 30s</td></tr>
+            <tr><td>安全审计覆盖率</td><td>Skill 通过 vetter 比例</td></tr>
+            <tr><td>权限审批比例</td><td>高风险工具调用监控</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 9. 风险 ===== -->
+  <section id="risks">
+    <div class="section-header">
+      <span class="num">09</span>
+      <h2>主要风险与缓解</h2>
+      <span class="tagline">known risks</span>
+    </div>
+
+    <table class="risk-table">
+      <thead>
+        <tr>
+          <th style="width:6%">级别</th>
+          <th style="width:20%">风险</th>
+          <th style="width:38%">影响</th>
+          <th>缓解动作</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="severity sev-h"></span><strong>高</strong></td>
+          <td>Skill 无签名校验，恶意 Skill 可能在一线机器执行</td>
+          <td>合规风险 / 数据泄露 / 业务事故</td>
+          <td>Phase 1 末实现签名链；启动校验失败拒绝加载；Prod 端默认不接受任何未签名 Skill</td>
+        </tr>
+        <tr>
+          <td><span class="severity sev-h"></span><strong>高</strong></td>
+          <td>无远程 Kill Switch，问题 Skill 上线后无法快速止损</td>
+          <td>故障扩散 · 一线作业被阻塞</td>
+          <td>Phase 1 实现远程禁用单个 Skill；P95 生效时间 < 30s；同步建告警通道</td>
+        </tr>
+        <tr>
+          <td><span class="severity sev-h"></span><strong>高</strong></td>
+          <td>自动更新逻辑未挂载，问题版本无法回滚</td>
+          <td>用户停留在旧版本，修复无法生效</td>
+          <td>Phase 1 优先修复；增加版本健康度上报；支持强制升级开关</td>
+        </tr>
+        <tr>
+          <td><span class="severity sev-m"></span><strong>中</strong></td>
+          <td>Skill 工具默认放行（Skill 调用不走 canUseTool）</td>
+          <td>恶意 Skill 可绕过权限审批</td>
+          <td>用 PreToolUse Hook 重建审批层；高风险工具强制弹窗</td>
+        </tr>
+        <tr>
+          <td><span class="severity sev-m"></span><strong>中</strong></td>
+          <td>无业务遥测，无法度量 Skill 价值</td>
+          <td>难以向管理层证明投入产出</td>
+          <td>Phase 1 业务遥测打底；Phase 2 建监控大盘 + ROI 仪表盘</td>
+        </tr>
+        <tr>
+          <td><span class="severity sev-m"></span><strong>中</strong></td>
+          <td>Skill 升级与 App 升级耦合（随 App 包分发）</td>
+          <td>每次小修都需要全量升级 Electron 包，体验差</td>
+          <td>Phase 2 引入独立 Skill 分发通道；增量下载</td>
+        </tr>
+        <tr>
+          <td><span class="severity sev-l"></span><strong>低</strong></td>
+          <td>跨平台兼容性差异（Windows 文件 I/O 慢、路径差异）</td>
+          <td>Skill 在 Mac 通过，Win 失败</td>
+          <td>Skill Tester 强制跨平台回归；CI 双平台并行</td>
+        </tr>
+        <tr>
+          <td><span class="severity sev-l"></span><strong>低</strong></td>
+          <td>SDK 升级带来 API 不兼容</td>
+          <td>需要适配工作量</td>
+          <td>已有 SDK 隔离层（sdk-config / session-manager）；SDK 升级有缓冲层</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ===== 10. 飞轮 ===== -->
+  <section id="flywheel">
+    <div class="flywheel-wrap">
+      <h3>📍 终态愿景 · 自动化飞轮</h3>
+      <p>每增加一个 Skill，平台价值不是线性增长，而是飞轮加速。</p>
+
+      <!-- 飞轮图 -->
+      <svg viewBox="0 0 980 240" width="100%" style="display:block;max-height:240px;margin-top:8px;">
+        <defs>
+          <marker id="arrow2" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="#C9A66B"/>
+          </marker>
+        </defs>
+        <!-- 5个节点 -->
+        <g>
+          <rect x="20" y="80" width="160" height="80" rx="10" fill="rgba(255,255,255,0.1)" stroke="#C9A66B" stroke-width="1.5"/>
+          <text x="100" y="115" text-anchor="middle" fill="#fff" font-size="13" font-weight="700">更多 Skill</text>
+          <text x="100" y="135" text-anchor="middle" fill="#C9A66B" font-size="11">建设侧入口</text>
+        </g>
+        <g>
+          <rect x="210" y="80" width="160" height="80" rx="10" fill="rgba(255,255,255,0.1)" stroke="#C9A66B" stroke-width="1.5"/>
+          <text x="290" y="115" text-anchor="middle" fill="#fff" font-size="13" font-weight="700">覆盖更多场景</text>
+          <text x="290" y="135" text-anchor="middle" fill="#C9A66B" font-size="11">业务侧扩展</text>
+        </g>
+        <g>
+          <rect x="400" y="80" width="160" height="80" rx="10" fill="rgba(255,255,255,0.1)" stroke="#C9A66B" stroke-width="1.5"/>
+          <text x="480" y="115" text-anchor="middle" fill="#fff" font-size="13" font-weight="700">沉淀更多数据</text>
+          <text x="480" y="135" text-anchor="middle" fill="#C9A66B" font-size="11">运行+遥测回流</text>
+        </g>
+        <g>
+          <rect x="590" y="80" width="160" height="80" rx="10" fill="rgba(255,255,255,0.1)" stroke="#C9A66B" stroke-width="1.5"/>
+          <text x="670" y="115" text-anchor="middle" fill="#fff" font-size="13" font-weight="700">优化更多 Skill</text>
+          <text x="670" y="135" text-anchor="middle" fill="#C9A66B" font-size="11">质量&amp;效能提升</text>
+        </g>
+        <g>
+          <rect x="780" y="80" width="180" height="80" rx="10" fill="rgba(201,166,107,0.25)" stroke="#C9A66B" stroke-width="2"/>
+          <text x="870" y="115" text-anchor="middle" fill="#fff" font-size="13" font-weight="700">复制更多 Skill</text>
+          <text x="870" y="135" text-anchor="middle" fill="#C9A66B" font-size="11">AI 辅助生成</text>
+        </g>
+        <!-- 箭头 -->
+        <path d="M180 120 L210 120" stroke="#C9A66B" stroke-width="2" marker-end="url(#arrow2)"/>
+        <path d="M370 120 L400 120" stroke="#C9A66B" stroke-width="2" marker-end="url(#arrow2)"/>
+        <path d="M560 120 L590 120" stroke="#C9A66B" stroke-width="2" marker-end="url(#arrow2)"/>
+        <path d="M750 120 L780 120" stroke="#C9A66B" stroke-width="2" marker-end="url(#arrow2)"/>
+        <!-- 回环 -->
+        <path d="M870 80 Q 870 30 480 30 Q 100 30 100 80" fill="none" stroke="#C9A66B" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#arrow2)"/>
+        <text x="480" y="22" text-anchor="middle" fill="#C9A66B" font-size="11" opacity="0.85">↺ 飞轮加速 · 每次循环都让下一次更快</text>
+      </svg>
+    </div>
+  </section>
+
+  <footer>
+    生产自动化平台 · 发展蓝图 v1 · 基于 Claude Agent SDK
+    <br/>
+    <span style="opacity:0.7;">本文档供管理层汇报使用，所有路线节点为规划，实际交付节奏将根据资源与业务优先级调整。</span>
+  </footer>
+
+</div>
+</body>
+</html>
